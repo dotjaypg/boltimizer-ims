@@ -7,6 +7,7 @@ import {
   Briefcase,
   Boxes,
   Check,
+  ClipboardCheck,
   ClipboardList,
   Layers3,
   MapPin,
@@ -36,9 +37,10 @@ import logoAsset from '@assets/image_1789625612704.png';
 const queryClient = new QueryClient();
 const STORAGE_KEY = 'creative-inventory-items-v1';
 const ACTIVITY_STORAGE_KEY = 'creative-inventory-activity-v1';
+const AUDIT_STORAGE_KEY = 'creative-inventory-audit-v1';
 
 type Category = 'Paper' | 'Cards' | 'Finishing' | 'Vinyl' | 'Ink' | 'Office' | 'Tools' | 'Packaging' | 'Safety';
-type View = 'overview' | 'inventory';
+type View = 'overview' | 'inventory' | 'audit';
 
 type InventoryItem = {
   id: string;
@@ -99,6 +101,19 @@ type StockActivity = {
   timestamp: number;
 };
 
+type AuditRecord = {
+  id: string;
+  date: string;
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  requesterName: string;
+  department: string;
+  purpose: string;
+  createdAt: number;
+};
+
 function loadItems(): InventoryItem[] {
   if (typeof window === 'undefined') return seedItems;
   try {
@@ -123,9 +138,22 @@ function loadActivities(): StockActivity[] {
   }
 }
 
+function loadAuditRecords(): AuditRecord[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const saved = window.localStorage.getItem(AUDIT_STORAGE_KEY);
+    if (!saved) return [];
+    const parsed = JSON.parse(saved) as AuditRecord[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function Dashboard() {
   const [items, setItems] = useState<InventoryItem[]>(loadItems);
   const [activities, setActivities] = useState<StockActivity[]>(loadActivities);
+  const [auditRecords, setAuditRecords] = useState<AuditRecord[]>(loadAuditRecords);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<'All' | Category>('All');
   const [view, setView] = useState<View>('overview');
@@ -143,6 +171,10 @@ function Dashboard() {
   useEffect(() => {
     window.localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(activities));
   }, [activities]);
+
+  useEffect(() => {
+    window.localStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify(auditRecords));
+  }, [auditRecords]);
 
   useEffect(() => {
     if (!toast) return;
@@ -220,6 +252,38 @@ function Dashboard() {
     setDialog(null);
   };
 
+  const saveAuditRecord = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const itemId = String(form.get('itemId') || '');
+    const item = items.find((entry) => entry.id === itemId);
+    const requesterName = String(form.get('requesterName') || '').trim();
+    const department = String(form.get('department') || '').trim();
+    const purpose = String(form.get('purpose') || '').trim();
+    if (!item || !requesterName || !department || !purpose) return;
+    const quantity = Math.max(1, Math.round(Number(form.get('quantity')) || 0));
+    const date = String(form.get('date') || new Date().toISOString().slice(0, 10));
+    setAuditRecords((current) => [{
+      id: `audit-${Date.now()}`,
+      date,
+      itemId: item.id,
+      itemName: item.name,
+      quantity,
+      unit: item.unit,
+      requesterName,
+      department,
+      purpose,
+      createdAt: Date.now(),
+    }, ...current].slice(0, 100));
+    event.currentTarget.reset();
+    showToast('Request added to the audit log.');
+  };
+
+  const deleteAuditRecord = (id: string) => {
+    setAuditRecords((current) => current.filter((record) => record.id !== id));
+    showToast('Audit record removed.', 'neutral');
+  };
+
   const deleteItem = () => {
     if (!deleteTarget) return;
     setItems((current) => current.filter((item) => item.id !== deleteTarget.id));
@@ -267,6 +331,9 @@ function Dashboard() {
               <button type="button" onClick={() => { setView('inventory'); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-semibold transition ${view === 'inventory' ? 'bg-[#fff0f2] text-[#e40012]' : 'text-[#747983] hover:bg-[#fff4f5] hover:text-[#111522]'}`} data-testid="button-nav-inventory">
                 <Archive size={17} /> Inventory <span className="ml-auto rounded-md bg-[#e40012] px-1.5 py-0.5 font-mono text-[10px] text-white">{items.length}</span>
               </button>
+              <button type="button" onClick={() => { setView('audit'); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-semibold transition ${view === 'audit' ? 'bg-[#fff0f2] text-[#e40012]' : 'text-[#747983] hover:bg-[#fff4f5] hover:text-[#111522]'}`} data-testid="button-nav-audit">
+                <ClipboardCheck size={17} /> Audit log <span className="ml-auto rounded-md bg-[#f6cdd2] px-1.5 py-0.5 font-mono text-[10px] text-[#8d2632]">{auditRecords.length}</span>
+              </button>
             </nav>
           </div>
 
@@ -290,7 +357,7 @@ function Dashboard() {
           <header className="flex h-[76px] items-center justify-between border-b border-[#f0dfe2] bg-white/95 px-5 backdrop-blur-md sm:px-8 lg:px-12">
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => setSidebarOpen(true)} className="relative z-10 rounded-lg p-2 text-[#4e535f] hover:bg-[#fff0f2] lg:hidden" aria-label="Open menu" aria-expanded={sidebarOpen} data-testid="button-open-menu"><Menu size={20} /></button>
-              <div className="hidden items-center gap-2 text-xs font-semibold text-[#777c86] sm:flex"><span>Boltimizer operations</span><span className="text-[#e5b7bd]">/</span><span className="text-[#111522]">{view === 'overview' ? 'Overview' : 'Inventory'}</span></div>
+              <div className="hidden items-center gap-2 text-xs font-semibold text-[#777c86] sm:flex"><span>Boltimizer operations</span><span className="text-[#e5b7bd]">/</span><span className="text-[#111522]">{view === 'overview' ? 'Overview' : view === 'inventory' ? 'Inventory' : 'Audit log'}</span></div>
               <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#aa7c82] sm:hidden">{view}</span>
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
@@ -365,6 +432,8 @@ function Dashboard() {
                 <EmptyState search={search} category={category} onReset={resetFilters} onAdd={() => { setDialog({ mode: 'add' }); setView('inventory'); }} />
               )}
              </section>}
+
+              {view === 'audit' && <AuditView items={items} records={auditRecords} onSave={saveAuditRecord} onDelete={deleteAuditRecord} />}
           </div>
         </main>
       </div>
@@ -413,6 +482,103 @@ function ActivityLog({ activities }: { activities: StockActivity[] }) {
       </div> : <div className="mt-5 rounded-lg border border-dashed border-white/15 bg-white/[.04] px-4 py-5 text-sm leading-6 text-[#dbc8cc]">Stock movements will appear here when materials are taken or replenished.</div>}
     </div>
   </div>;
+}
+
+function formatAuditDate(date: string) {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T00:00:00`));
+}
+
+function AuditView({ items, records, onSave, onDelete }: { items: InventoryItem[]; records: AuditRecord[]; onSave: (event: FormEvent<HTMLFormElement>) => void; onDelete: (id: string) => void }) {
+  const defaultItemId = items.find((item) => item.name.toLowerCase().includes('a4'))?.id || items[0]?.id || '';
+  const today = new Date().toISOString().slice(0, 10);
+  return <section className="appear-4" aria-labelledby="audit-heading">
+    <div>
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">Audit / operation log</p>
+      <h1 id="audit-heading" className="mt-1 text-[clamp(2rem,4vw,3.4rem)] font-extrabold tracking-[-0.07em]">Record a material request.</h1>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-[#5f6570]">Keep a clear handoff trail when another department takes supplies from the Boltimizer cabinet.</p>
+    </div>
+
+    <div className="mt-8 grid gap-5 xl:grid-cols-[.82fr_1.18fr]">
+      <form onSubmit={onSave} className="rounded-xl border border-[#f0dfe2] bg-white p-5 soft-shadow sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">New record</p>
+            <h2 className="mt-1 text-lg font-extrabold tracking-[-0.04em]">Who took what?</h2>
+          </div>
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fff0f2] text-[#e40012]"><ClipboardCheck size={17} /></span>
+        </div>
+
+        <div className="mt-6 space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-bold text-[#4f535e]">Date</span>
+              <input name="date" type="date" defaultValue={today} required className="h-11 w-full rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 text-sm text-[#111522] focus:border-[#e40012] focus:bg-white focus:outline-none" data-testid="input-audit-date" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-bold text-[#4f535e]">Quantity</span>
+              <input name="quantity" type="number" min="1" step="1" defaultValue="1" required className="h-11 w-full rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 text-sm text-[#111522] focus:border-[#e40012] focus:bg-white focus:outline-none" data-testid="input-audit-quantity" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#4f535e]">Requested material</span>
+            <select name="itemId" defaultValue={defaultItemId} required className="h-11 w-full rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 text-sm text-[#111522] focus:border-[#e40012] focus:bg-white focus:outline-none" data-testid="select-audit-item">
+              {items.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.unit}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#4f535e]">Person requesting</span>
+            <input name="requesterName" type="text" placeholder="e.g. Jordan Lee" required className="h-11 w-full rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 text-sm text-[#111522] placeholder:text-[#a3a7aa] focus:border-[#e40012] focus:bg-white focus:outline-none" data-testid="input-audit-requester" />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#4f535e]">Department</span>
+            <input name="department" type="text" placeholder="e.g. Maintenance or Sales" required className="h-11 w-full rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 text-sm text-[#111522] placeholder:text-[#a3a7aa] focus:border-[#e40012] focus:bg-white focus:outline-none" data-testid="input-audit-department" />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-[#4f535e]">Purpose</span>
+            <textarea name="purpose" rows={3} placeholder="What will the material be used for?" required className="w-full resize-none rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 py-3 text-sm text-[#111522] placeholder:text-[#a3a7aa] focus:border-[#e40012] focus:bg-white focus:outline-none" data-testid="input-audit-purpose" />
+          </label>
+        </div>
+
+        <div className="mt-5 border-t border-[#f0dfe2] pt-4">
+          <p className="text-xs leading-5 text-[#777c86]">This creates an audit record only. Use the Inventory tab when the cabinet quantity itself changes.</p>
+          <button type="submit" className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#e40012] px-4 py-3 text-sm font-bold text-white shadow-[3px_3px_0_#111522] transition hover:bg-[#c80010]" data-testid="button-save-audit">
+            <ClipboardCheck size={16} /> Save request record
+          </button>
+        </div>
+      </form>
+
+      <div className="rounded-xl border border-[#f0dfe2] bg-white p-5 soft-shadow sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">Request history</p>
+            <h2 className="mt-1 text-lg font-extrabold tracking-[-0.04em]">Recent operations</h2>
+          </div>
+          <span className="rounded-full bg-[#fff0f2] px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#a9000d]">{records.length} records</span>
+        </div>
+
+        {records.length ? <div className="mt-5 space-y-2">
+          {records.map((record) => <div key={record.id} className="rounded-lg border border-[#f0dfe2] bg-[#fff8f9] p-4" data-testid={`audit-record-${record.id}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-[#111522]">{record.itemName}</p>
+                <p className="mt-1 font-mono text-[10px] uppercase tracking-wider text-[#92747b]">{formatAuditDate(record.date)} · {record.quantity} {record.unit}</p>
+              </div>
+              <button type="button" onClick={() => onDelete(record.id)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#a58a82] hover:bg-[#ffe4e7] hover:text-[#e40012]" aria-label={`Delete request for ${record.itemName}`} data-testid={`button-delete-audit-${record.id}`}><Trash2 size={14} /></button>
+            </div>
+            <div className="mt-3 grid gap-2 border-t border-[#f0dfe2] pt-3 text-xs sm:grid-cols-2">
+              <p><span className="font-semibold text-[#777c86]">Requested by</span><br /><span className="font-bold text-[#111522]">{record.requesterName}</span></p>
+              <p><span className="font-semibold text-[#777c86]">Department</span><br /><span className="font-bold text-[#111522]">{record.department}</span></p>
+            </div>
+            <p className="mt-3 text-sm leading-5 text-[#5f6570]"><span className="font-semibold text-[#777c86]">Purpose:</span> {record.purpose}</p>
+          </div>)}
+        </div> : <div className="mt-5 rounded-lg border border-dashed border-[#e6b9bf] bg-[#fff8f9] px-5 py-12 text-center">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-[#fff0f2] text-[#e40012]"><ClipboardCheck size={22} /></span>
+          <h3 className="mt-4 text-base font-extrabold">No requests recorded yet.</h3>
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#777c86]">The next material handoff you record will appear here with its requester and purpose.</p>
+        </div>}
+      </div>
+    </div>
+  </section>;
 }
 
 function LowStockRow({ item, onAdjust, onEdit }: { item: InventoryItem; onAdjust: (id: string, amount: number) => void; onEdit: () => void }) {
