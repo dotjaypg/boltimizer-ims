@@ -1,7 +1,7 @@
 kind = "web"
 previewPath = "/"
 title = "Creative Inventory"
-description = "A modern inventory tracking app for an office creatives department material cabinet, with dashboard summaries, searchable inventory, low-stock alerts, and quick stock adjustments backed by local storage."
+description = "A modern inventory tracking app for an office creatives department material cabinet, with dashboard summaries, searchable inventory, low-stock alerts, stock activity, and database-backed audit records."
 version = "1.0.0"
 id = "artifacts/creative-inventory"
 router = "path"

@@ -32,6 +32,17 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
+import {
+  adjustInventoryQuantity,
+  bootstrapInventory,
+  createAuditRecord,
+  createInventoryItem,
+  deleteAuditRecord as deleteAuditRecordRequest,
+  deleteInventoryItem,
+  getInventoryState,
+  updateInventoryItem,
+} from '@workspace/api-client-react';
+import type { InventoryState as ApiInventoryState } from '@workspace/api-client-react';
 import logoAsset from '@assets/image_1789625612704.png';
 
 const queryClient = new QueryClient();
@@ -150,10 +161,32 @@ function loadAuditRecords(): AuditRecord[] {
   }
 }
 
+function applyApiState(state: ApiInventoryState) {
+  return {
+    items: state.items.map((item) => ({
+      ...item,
+      category: item.category as Category,
+      note: item.note ?? undefined,
+    })),
+    activities: state.activities.map((activity) => ({
+      ...activity,
+      action: activity.action as StockActivity['action'],
+      timestamp: new Date(activity.timestamp).getTime(),
+    })),
+    auditRecords: state.auditRecords.map((record) => ({
+      ...record,
+      date: record.date.slice(0, 10),
+      createdAt: new Date(record.createdAt).getTime(),
+    })),
+  };
+}
+
 function Dashboard() {
-  const [items, setItems] = useState<InventoryItem[]>(loadItems);
-  const [activities, setActivities] = useState<StockActivity[]>(loadActivities);
-  const [auditRecords, setAuditRecords] = useState<AuditRecord[]>(loadAuditRecords);
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [activities, setActivities] = useState<StockActivity[]>([]);
+  const [auditRecords, setAuditRecords] = useState<AuditRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<'All' | Category>('All');
   const [view, setView] = useState<View>('overview');
@@ -165,16 +198,45 @@ function Dashboard() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  }, [items]);
-
-  useEffect(() => {
-    window.localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(activities));
-  }, [activities]);
-
-  useEffect(() => {
-    window.localStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify(auditRecords));
-  }, [auditRecords]);
+    let active = true;
+    const loadDatabaseState = async () => {
+      try {
+        let state = await getInventoryState();
+        if (!state.items.length) {
+          const localItems = loadItems();
+          const localActivities = loadActivities();
+          const localAuditRecords = loadAuditRecords();
+          state = await bootstrapInventory({
+            items: localItems,
+            activities: localActivities.map((activity) => ({
+              ...activity,
+              timestamp: new Date(activity.timestamp).toISOString(),
+            })),
+            auditRecords: localAuditRecords.map(({ date, itemId, quantity, requesterName, department, purpose }) => ({
+              date,
+              itemId,
+              quantity,
+              requesterName,
+              department,
+              purpose,
+            })),
+          });
+        }
+        if (!active) return;
+        const next = applyApiState(state);
+        setItems(next.items);
+        setActivities(next.activities);
+        setAuditRecords(next.auditRecords);
+        setLoadError(null);
+      } catch {
+        if (active) setLoadError('The inventory database could not be reached. Refresh to try again.');
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+    void loadDatabaseState();
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -195,7 +257,14 @@ function Dashboard() {
 
   const showToast = (message: string, tone: 'success' | 'neutral' = 'success') => setToast({ message, tone });
 
-  const setExactQuantity = (id: string, requestedQuantity: number) => {
+  const refreshDatabaseState = async () => {
+    const state = applyApiState(await getInventoryState());
+    setItems(state.items);
+    setActivities(state.activities);
+    setAuditRecords(state.auditRecords);
+  };
+
+  const setExactQuantity = async (id: string, requestedQuantity: number) => {
     const item = items.find((entry) => entry.id === id);
     if (!item) return;
     const nextQuantity = Math.max(0, Math.round(requestedQuantity));
@@ -203,34 +272,29 @@ function Dashboard() {
     if (!actualChange) {
       return;
     }
-    const action: StockActivity['action'] = actualChange > 0 ? 'stock' : 'take';
-    setItems((current) => current.map((entry) => entry.id === id ? { ...entry, quantity: nextQuantity } : entry));
-    setActivities((current) => [{
-      id: `activity-${Date.now()}`,
-      itemId: item.id,
-      itemName: item.name,
-      action,
-      amount: Math.abs(actualChange),
-      quantityAfter: nextQuantity,
-      unit: item.unit,
-      timestamp: Date.now(),
-    }, ...current].slice(0, 18));
-    setFlashId(id);
-    window.setTimeout(() => setFlashId((current) => current === id ? null : current), 450);
-    showToast(`${item.name} ${actualChange > 0 ? 'stocked' : 'taken'}.`);
+    try {
+      await adjustInventoryQuantity({ itemId: id, quantity: nextQuantity });
+      setItems((current) => current.map((entry) => entry.id === id ? { ...entry, quantity: nextQuantity } : entry));
+      await refreshDatabaseState();
+      setFlashId(id);
+      window.setTimeout(() => setFlashId((current) => current === id ? null : current), 450);
+      showToast(`${item.name} ${actualChange > 0 ? 'stocked' : 'taken'}.`);
+    } catch {
+      showToast('The quantity could not be saved.', 'neutral');
+    }
   };
 
-  const adjustQuantity = (id: string, amount: number) => {
+  const adjustQuantity = async (id: string, amount: number) => {
     const item = items.find((entry) => entry.id === id);
     if (!item) return;
     if (amount < 0 && item.quantity === 0) {
       showToast(`${item.name} is already at zero.`, 'neutral');
       return;
     }
-    setExactQuantity(id, item.quantity + amount);
+    await setExactQuantity(id, item.quantity + amount);
   };
 
-  const saveItem = (event: FormEvent<HTMLFormElement>) => {
+  const saveItem = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const name = String(form.get('name') || '').trim();
@@ -245,16 +309,25 @@ function Dashboard() {
       location: String(form.get('location') || 'Unassigned').trim(),
       note: String(form.get('note') || '').trim(),
     };
-    setItems((current) => dialog?.mode === 'edit'
-      ? current.map((item) => item.id === next.id ? next : item)
-      : [next, ...current]);
-    showToast(dialog?.mode === 'edit' ? 'Inventory record updated.' : 'New material added.');
-    setDialog(null);
+    try {
+      const saved = dialog?.mode === 'edit'
+        ? await updateInventoryItem(next.id, next)
+        : await createInventoryItem(next);
+      const localSaved = applyApiState({ items: [saved], activities: [], auditRecords: [] }).items[0];
+      setItems((current) => dialog?.mode === 'edit'
+        ? current.map((item) => item.id === next.id ? localSaved : item)
+        : [localSaved, ...current]);
+      showToast(dialog?.mode === 'edit' ? 'Inventory record updated.' : 'New material added.');
+      setDialog(null);
+    } catch {
+      showToast('The inventory record could not be saved.', 'neutral');
+    }
   };
 
-  const saveAuditRecord = (event: FormEvent<HTMLFormElement>) => {
+  const saveAuditRecord = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const itemId = String(form.get('itemId') || '');
     const item = items.find((entry) => entry.id === itemId);
     const requesterName = String(form.get('requesterName') || '').trim();
@@ -263,32 +336,37 @@ function Dashboard() {
     if (!item || !requesterName || !department || !purpose) return;
     const quantity = Math.max(1, Math.round(Number(form.get('quantity')) || 0));
     const date = String(form.get('date') || new Date().toISOString().slice(0, 10));
-    setAuditRecords((current) => [{
-      id: `audit-${Date.now()}`,
-      date,
-      itemId: item.id,
-      itemName: item.name,
-      quantity,
-      unit: item.unit,
-      requesterName,
-      department,
-      purpose,
-      createdAt: Date.now(),
-    }, ...current].slice(0, 100));
-    event.currentTarget.reset();
-    showToast('Request added to the audit log.');
+    try {
+      await createAuditRecord({ date, itemId, quantity, requesterName, department, purpose });
+      await refreshDatabaseState();
+      formElement.reset();
+      showToast(`${quantity} ${item.unit} deducted and request recorded.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      showToast(message || 'The request could not be recorded.', 'neutral');
+    }
   };
 
-  const deleteAuditRecord = (id: string) => {
-    setAuditRecords((current) => current.filter((record) => record.id !== id));
-    showToast('Audit record removed.', 'neutral');
+  const deleteAuditRecord = async (id: string) => {
+    try {
+      await deleteAuditRecordRequest(id);
+      await refreshDatabaseState();
+      showToast('Audit record removed and quantity restored.', 'neutral');
+    } catch {
+      showToast('The audit record could not be removed.', 'neutral');
+    }
   };
 
-  const deleteItem = () => {
+  const deleteItem = async () => {
     if (!deleteTarget) return;
-    setItems((current) => current.filter((item) => item.id !== deleteTarget.id));
-    showToast(`${deleteTarget.name} removed from inventory.`, 'neutral');
-    setDeleteTarget(null);
+    try {
+      await deleteInventoryItem(deleteTarget.id);
+      setItems((current) => current.filter((item) => item.id !== deleteTarget.id));
+      showToast(`${deleteTarget.name} removed from inventory.`, 'neutral');
+      setDeleteTarget(null);
+    } catch {
+      showToast('The inventory record could not be removed.', 'neutral');
+    }
   };
 
   const resetFilters = () => {
@@ -298,6 +376,14 @@ function Dashboard() {
   };
 
   const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date());
+
+  if (isLoading) {
+    return <div className="inventory-shell paper-grain flex min-h-[100dvh] items-center justify-center px-6 text-[#111522]"><div className="rounded-xl border border-[#f0dfe2] bg-white px-6 py-5 text-center soft-shadow"><span className="mx-auto flex h-10 w-10 animate-pulse items-center justify-center rounded-lg bg-[#fff0f2] text-[#e40012]"><Archive size={18} /></span><p className="mt-3 text-sm font-bold">Connecting to the materials database…</p><p className="mt-1 text-xs text-[#777c86]">Loading the shared cabinet state.</p></div></div>;
+  }
+
+  if (loadError) {
+    return <div className="inventory-shell paper-grain flex min-h-[100dvh] items-center justify-center px-6 text-[#111522]"><div className="max-w-md rounded-xl border border-[#f0dfe2] bg-white px-6 py-5 text-center soft-shadow"><span className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-[#ffe4e7] text-[#b0000f]"><X size={18} /></span><p className="mt-3 text-sm font-bold">{loadError}</p><button type="button" onClick={() => window.location.reload()} className="mt-4 rounded-lg bg-[#e40012] px-4 py-2.5 text-sm font-bold text-white">Refresh workspace</button></div></div>;
+  }
 
   return (
     <div className="inventory-shell paper-grain min-h-[100dvh] text-[#111522]">
@@ -540,7 +626,7 @@ function AuditView({ items, records, onSave, onDelete }: { items: InventoryItem[
         </div>
 
         <div className="mt-5 border-t border-[#f0dfe2] pt-4">
-          <p className="text-xs leading-5 text-[#777c86]">This creates an audit record only. Use the Inventory tab when the cabinet quantity itself changes.</p>
+          <p className="text-xs leading-5 text-[#777c86]">Saving this request deducts the requested quantity from cabinet stock and adds a “taken” activity.</p>
           <button type="submit" className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#e40012] px-4 py-3 text-sm font-bold text-white shadow-[3px_3px_0_#111522] transition hover:bg-[#c80010]" data-testid="button-save-audit">
             <ClipboardCheck size={16} /> Save request record
           </button>

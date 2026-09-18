@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: inventory
+    description: Inventory and material request operations
 paths:
   /healthz:
     get:
@@ -24,7 +26,157 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /inventory/state:
+    get:
+      operationId: getInventoryState
+      tags: [inventory]
+      summary: Get inventory state
+      responses:
+        "200":
+          description: Current inventory, stock activity, and audit records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryState"
+  /inventory/bootstrap:
+    post:
+      operationId: bootstrapInventory
+      tags: [inventory]
+      summary: Seed the inventory database
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryBootstrapInput"
+      responses:
+        "200":
+          description: Current inventory state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryState"
+  /inventory/items:
+    post:
+      operationId: createInventoryItem
+      tags: [inventory]
+      summary: Create an inventory item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryItemInput"
+      responses:
+        "201":
+          description: Created inventory item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+  /inventory/items/{id}:
+    patch:
+      operationId: updateInventoryItem
+      tags: [inventory]
+      summary: Update an inventory item
+      parameters:
+        - $ref: "#/components/parameters/InventoryItemId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryItemInput"
+      responses:
+        "200":
+          description: Updated inventory item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteInventoryItem
+      tags: [inventory]
+      summary: Delete an inventory item
+      parameters:
+        - $ref: "#/components/parameters/InventoryItemId"
+      responses:
+        "204":
+          description: Inventory item deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /inventory/adjustments:
+    post:
+      operationId: adjustInventoryQuantity
+      tags: [inventory]
+      summary: Set an inventory quantity and record stock activity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryAdjustmentInput"
+      responses:
+        "200":
+          description: Updated stock activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockActivity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /inventory/audit-records:
+    post:
+      operationId: createAuditRecord
+      tags: [inventory]
+      summary: Record a material request and deduct inventory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditRecordInput"
+      responses:
+        "201":
+          description: Created audit record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditRecord"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Not enough inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /inventory/audit-records/{id}:
+    delete:
+      operationId: deleteAuditRecord
+      tags: [inventory]
+      summary: Delete an audit record and restore its quantity
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Audit record deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
+  parameters:
+    InventoryItemId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +185,108 @@ components:
           type: string
       required:
         - status
+    InventoryItem:
+      type: object
+      required: [id, name, category, quantity, unit, threshold, location]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        category: { type: string }
+        quantity: { type: integer, minimum: 0 }
+        unit: { type: string }
+        threshold: { type: integer, minimum: 0 }
+        location: { type: string }
+        note: { type: ["string", "null"] }
+    InventoryItemInput:
+      type: object
+      required: [id, name, category, quantity, unit, threshold, location]
+      properties:
+        id: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1 }
+        category: { type: string, minLength: 1 }
+        quantity: { type: integer, minimum: 0 }
+        unit: { type: string, minLength: 1 }
+        threshold: { type: integer, minimum: 0 }
+        location: { type: string, minLength: 1 }
+        note: { type: ["string", "null"] }
+    StockActivity:
+      type: object
+      required: [id, itemId, itemName, action, amount, quantityAfter, unit, timestamp]
+      properties:
+        id: { type: string }
+        itemId: { type: string }
+        itemName: { type: string }
+        action: { type: string, enum: [take, stock] }
+        amount: { type: integer, minimum: 1 }
+        quantityAfter: { type: integer, minimum: 0 }
+        unit: { type: string }
+        timestamp: { type: string, format: date-time }
+    AuditRecord:
+      type: object
+      required: [id, date, itemId, itemName, quantity, unit, requesterName, department, purpose, createdAt]
+      properties:
+        id: { type: string }
+        date: { type: string, format: date }
+        itemId: { type: string }
+        itemName: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        unit: { type: string }
+        requesterName: { type: string }
+        department: { type: string }
+        purpose: { type: string }
+        createdAt: { type: string, format: date-time }
+    AuditRecordInput:
+      type: object
+      required: [date, itemId, quantity, requesterName, department, purpose]
+      properties:
+        date: { type: string, format: date }
+        itemId: { type: string, minLength: 1 }
+        quantity: { type: integer, minimum: 1 }
+        requesterName: { type: string, minLength: 1 }
+        department: { type: string, minLength: 1 }
+        purpose: { type: string, minLength: 1 }
+    InventoryAdjustmentInput:
+      type: object
+      required: [itemId, quantity]
+      properties:
+        itemId: { type: string, minLength: 1 }
+        quantity: { type: integer, minimum: 0 }
+    InventoryBootstrapInput:
+      type: object
+      required: [items, activities, auditRecords]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryItemInput" }
+        activities:
+          type: array
+          items: { $ref: "#/components/schemas/StockActivity" }
+        auditRecords:
+          type: array
+          items: { $ref: "#/components/schemas/AuditRecordInput" }
+    InventoryState:
+      type: object
+      required: [items, activities, auditRecords]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryItem" }
+        activities:
+          type: array
+          items: { $ref: "#/components/schemas/StockActivity" }
+        auditRecords:
+          type: array
+          items: { $ref: "#/components/schemas/AuditRecord" }
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
 
