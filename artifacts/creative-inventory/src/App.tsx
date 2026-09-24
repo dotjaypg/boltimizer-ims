@@ -10,6 +10,9 @@ import {
   CircleDollarSign,
   ClipboardCheck,
   ClipboardList,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   Download,
   Layers3,
   MapPin,
@@ -60,6 +63,8 @@ type Category = 'Paper' | 'Cards' | 'Finishing' | 'Vinyl' | 'Ink' | 'Office' | '
 type View = 'overview' | 'inventory' | 'borrowed' | 'records';
 type AnalyticsPeriod = 'daily' | 'weekly' | 'monthly';
 type OperationalStatus = 'Available' | 'Low Stock' | 'Out of Stock' | 'Borrowed' | 'Needs Repair';
+type InventorySortKey = 'name' | 'category' | 'quantity' | 'unit' | 'pricePerUnit' | 'threshold' | 'status' | 'location';
+type SortDirection = 'asc' | 'desc';
 
 type InventoryItem = {
   id: string;
@@ -259,7 +264,8 @@ function Dashboard() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<'All' | Category>('All');
-  const [statusSort, setStatusSort] = useState<'default' | 'operational'>('default');
+  const [statusFilter, setStatusFilter] = useState<'All' | OperationalStatus>('All');
+  const [inventorySort, setInventorySort] = useState<{ key: InventorySortKey; direction: SortDirection } | null>(null);
   const [analyticsPeriod, setAnalyticsPeriod] = useState<AnalyticsPeriod>('weekly');
   const [view, setView] = useState<View>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -330,12 +336,27 @@ function Dashboard() {
     const matchingItems = items.filter((item) => {
       const matchesSearch = !query || item.name.toLowerCase().includes(query) || item.location.toLowerCase().includes(query);
       const matchesCategory = category === 'All' || item.category === category;
-      return matchesSearch && matchesCategory;
+      const matchesStatus = statusFilter === 'All' || getOperationalStatus(item, borrowedItems) === statusFilter;
+      return matchesSearch && matchesCategory && matchesStatus;
     });
-    if (statusSort === 'default') return matchingItems;
-    const precedence: OperationalStatus[] = ['Needs Repair', 'Borrowed', 'Out of Stock', 'Low Stock', 'Available'];
-    return [...matchingItems].sort((a, b) => precedence.indexOf(getOperationalStatus(a, borrowedItems)) - precedence.indexOf(getOperationalStatus(b, borrowedItems)));
-  }, [borrowedItems, category, items, search, statusSort]);
+    if (!inventorySort) return matchingItems;
+
+    const sortedItems = [...matchingItems].sort((a, b) => {
+      const valueFor = (item: InventoryItem): string | number => {
+        if (inventorySort.key === 'status') return getOperationalStatus(item, borrowedItems);
+        if (inventorySort.key === 'pricePerUnit') return item.pricePerUnit;
+        return item[inventorySort.key];
+      };
+      const aValue = valueFor(a);
+      const bValue = valueFor(b);
+      const comparison = typeof aValue === 'number' && typeof bValue === 'number'
+        ? aValue - bValue
+        : String(aValue).localeCompare(String(bValue), undefined, { sensitivity: 'base', numeric: true });
+      if (comparison !== 0) return inventorySort.direction === 'asc' ? comparison : -comparison;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+    });
+    return sortedItems;
+  }, [borrowedItems, category, inventorySort, items, search, statusFilter]);
 
   const analytics = useMemo(() => {
     const usage = auditRecords.filter((record) => recordDateInRange(record.date, analyticsPeriod));
@@ -560,7 +581,15 @@ function Dashboard() {
   const resetFilters = () => {
     setSearch('');
     setCategory('All');
+    setStatusFilter('All');
+    setInventorySort(null);
     showToast('Filters cleared.', 'neutral');
+  };
+
+  const sortInventory = (key: InventorySortKey) => {
+    setInventorySort((current) => current?.key === key
+      ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+      : { key, direction: 'asc' });
   };
 
   const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date());
@@ -696,12 +725,16 @@ function Dashboard() {
                 <div className="flex flex-wrap gap-2" aria-label="Filter by category">
                    {categories.map((entry) => <button type="button" key={entry} onClick={() => setCategory(entry)} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition ${category === entry ? 'border-[#e40012] bg-[#e40012] text-white' : 'border-[#f0dfe2] bg-[#fff8f9] text-[#677286] hover:border-[#e6a0a8] hover:text-[#111522]'}`} data-testid={`button-filter-${entry.toLowerCase()}`}>{entry}{entry !== 'All' && <span className={`ml-1.5 font-mono text-[10px] ${category === entry ? 'text-[#ffdfe2]' : 'text-[#a3a4a5]'}`}>{items.filter((item) => item.category === entry).length}</span>}</button>)}
                 </div>
-                 <div className="flex flex-col gap-2 border-t border-[#f0dfe2] pt-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div><p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#92747b]">Sort by operational status</p><p className="mt-1 text-xs text-[#89909b]">Needs Repair → Borrowed → Out of Stock → Low Stock → Available.</p></div>
-                   <select value={statusSort} onChange={(event) => setStatusSort(event.target.value as 'default' | 'operational')} className="h-10 rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 text-xs font-bold text-[#4f535e] focus:border-[#e40012] focus:outline-none" data-testid="select-inventory-status-sort">
-                     <option value="default">Cabinet order</option>
-                     <option value="operational">Operational priority</option>
-                   </select>
+                  <div className="flex flex-col gap-2 border-t border-[#f0dfe2] pt-3 sm:flex-row sm:items-center sm:justify-between">
+                     <div><p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#92747b]">Filter by status</p><p className="mt-1 text-xs text-[#89909b]">Show only materials with a selected operational status.</p></div>
+                    <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'All' | OperationalStatus)} className="h-10 rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 text-xs font-bold text-[#4f535e] focus:border-[#e40012] focus:outline-none" data-testid="select-inventory-status-filter">
+                      <option value="All">All statuses</option>
+                      <option value="Available">Available</option>
+                      <option value="Low Stock">Low Stock</option>
+                      <option value="Out of Stock">Out of Stock</option>
+                      <option value="Borrowed">Borrowed</option>
+                      <option value="Needs Repair">Needs Repair</option>
+                    </select>
                  </div>
               </div>
 
@@ -709,14 +742,14 @@ function Dashboard() {
                  <div className="mt-4 overflow-hidden rounded-xl border border-[#f0dfe2] bg-white soft-shadow">
                   <div className="overflow-x-auto">
                      <table className="w-full min-w-[1020px] border-collapse text-left">
-                         <thead><tr className="border-b border-[#f0dfe2] bg-[#fff7f8] text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><th className="px-5 py-4 font-mono font-medium">Preview</th><th className="px-3 py-4 font-mono font-medium">Item name</th><th className="px-3 py-4 font-mono font-medium">Category</th><th className="px-3 py-4 font-mono font-medium">Quantity in stock</th><th className="px-3 py-4 font-mono font-medium">Unit</th><th className="px-3 py-4 font-mono font-medium">Price per Unit</th><th className="px-3 py-4 font-mono font-medium">Min. threshold</th><th className="px-3 py-4 font-mono font-medium">Operational status</th><th className="px-3 py-4 font-mono font-medium">Cabinet location</th><th className="px-5 py-4 text-right font-mono font-medium">Actions</th></tr></thead>
+                          <thead><tr className="border-b border-[#f0dfe2] bg-[#fff7f8] text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><th scope="col" className="px-5 py-4 font-mono font-medium">Preview</th><SortableHeader label="Item name" sortKey="name" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Category" sortKey="category" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Quantity in stock" sortKey="quantity" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Unit" sortKey="unit" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Price per Unit" sortKey="pricePerUnit" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Min. threshold" sortKey="threshold" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Operational status" sortKey="status" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Cabinet location" sortKey="location" sort={inventorySort} onSort={sortInventory} /><th scope="col" className="px-5 py-4 text-right font-mono font-medium">Actions</th></tr></thead>
                          <tbody>{filteredItems.map((item) => <InventoryRow key={item.id} item={item} borrowedItems={borrowedItems} flash={flashId === item.id} onAdjust={adjustQuantity} onSetQuantity={setExactQuantity} onEdit={() => setDialog({ mode: 'edit', item })} onDelete={() => setDeleteTarget(item)} />)}</tbody>
                     </table>
                   </div>
                    <div className="flex items-center justify-between border-t border-[#f0dfe2] bg-[#fff7f8] px-5 py-3 font-mono text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><span data-testid="text-filter-count">{filteredItems.length} of {items.length} materials shown</span><span>All changes sync instantly</span></div>
                 </div>
               ) : (
-                <EmptyState search={search} category={category} onReset={resetFilters} onAdd={() => { setDialog({ mode: 'add' }); setView('inventory'); }} />
+                 <EmptyState search={search} category={category} statusFilter={statusFilter} onReset={resetFilters} onAdd={() => { setDialog({ mode: 'add' }); setView('inventory'); }} />
               )}
              </section>}
 
@@ -1043,6 +1076,17 @@ function LowStockRow({ item, onAdjust, onEdit }: { item: InventoryItem; onAdjust
   return <div className="flex items-center gap-3 rounded-xl border border-[#e5dbcf] bg-[#faf4e9] px-3 py-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${meta.tint} ${meta.tone}`}><Icon size={16} /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{item.name}</p><p className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-[#9298a0]">{item.quantity} {item.unit} · minimum {item.threshold}</p><p className="mt-1 flex items-center gap-1 text-xs text-[#786a61]"><MapPin size={11} />{item.location}</p></div><span className="hidden rounded-full bg-[#f5d9d1] px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-[#984c40] sm:inline">{status}</span><div className="flex items-center gap-1"><button type="button" onClick={() => onAdjust(item.id, -1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-[#dcd1c3] text-[#586578] hover:bg-[#f0e5d7]" aria-label={`Decrease ${item.name}`} data-testid={`button-decrease-alert-${item.id}`}><Minus size={13} /></button><button type="button" onClick={() => onAdjust(item.id, 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-[#dcd1c3] text-[#586578] hover:bg-[#f0e5d7]" aria-label={`Increase ${item.name}`} data-testid={`button-increase-alert-${item.id}`}><Plus size={13} /></button><button type="button" onClick={onEdit} className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-[#8d7567] hover:bg-[#f0e5d7]" aria-label={`Edit ${item.name}`} data-testid={`button-edit-alert-${item.id}`}><Pencil size={13} /></button></div></div>;
 }
 
+function SortableHeader({ label, sortKey, sort, onSort }: { label: string; sortKey: InventorySortKey; sort: { key: InventorySortKey; direction: SortDirection } | null; onSort: (key: InventorySortKey) => void }) {
+  const active = sort?.key === sortKey;
+  const direction = active ? sort.direction : null;
+  return <th scope="col" aria-sort={direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none'} className="px-3 py-4 font-mono font-medium">
+    <button type="button" onClick={() => onSort(sortKey)} className="inline-flex items-center gap-1.5 text-left transition hover:text-[#e40012] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e40012]/40" aria-label={`${label}: ${active ? direction === 'asc' ? 'ascending, click to sort descending' : 'descending, click to sort ascending' : 'not sorted, click to sort ascending'}`} data-testid={`button-sort-${sortKey}`}>
+      <span>{label}</span>
+      {direction === 'asc' ? <ChevronUp size={13} aria-hidden="true" /> : direction === 'desc' ? <ChevronDown size={13} aria-hidden="true" /> : <ChevronsUpDown size={13} aria-hidden="true" />}
+    </button>
+  </th>;
+}
+
 function InventoryRow({ item, borrowedItems, flash, onAdjust, onSetQuantity, onEdit, onDelete }: { item: InventoryItem; borrowedItems: BorrowedItem[]; flash: boolean; onAdjust: (id: string, amount: number) => void; onSetQuantity: (id: string, quantity: number) => void; onEdit: () => void; onDelete: () => void }) {
   const [draftQuantity, setDraftQuantity] = useState(String(item.quantity));
   const meta = categoryMeta[item.category];
@@ -1070,8 +1114,13 @@ function InventoryRow({ item, borrowedItems, flash, onAdjust, onSetQuantity, onE
   </tr>;
 }
 
-function EmptyState({ search, category, onReset, onAdd }: { search: string; category: string; onReset: () => void; onAdd: () => void }) {
-  return <div className="mt-4 rounded-xl border border-dashed border-[#e6b9bf] bg-white px-6 py-16 text-center soft-shadow"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-[#fff0f2] text-[#e40012]"><Search size={24} /></span><h3 className="mt-5 text-lg font-extrabold tracking-[-0.04em]">Nothing in this view yet.</h3><p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#7b8490]">{search ? `No materials match “${search}”.` : `There are no ${category.toLowerCase()} materials in the cabinet.`} Try another filter, or add the material if it belongs here.</p><div className="mt-6 flex flex-wrap justify-center gap-2"><button type="button" onClick={onReset} className="rounded-lg border border-[#f0d5d9] px-3.5 py-2.5 text-xs font-bold text-[#5d687b] hover:bg-[#fff0f2]" data-testid="button-reset-filters">Clear filters</button><button type="button" onClick={onAdd} className="rounded-lg bg-[#e40012] px-3.5 py-2.5 text-xs font-bold text-white hover:bg-[#c80010]" data-testid="button-empty-add">Add material</button></div></div>;
+function EmptyState({ search, category, statusFilter, onReset, onAdd }: { search: string; category: string; statusFilter: 'All' | OperationalStatus; onReset: () => void; onAdd: () => void }) {
+  const message = search
+    ? `No materials match “${search}”.`
+    : statusFilter !== 'All'
+      ? `There are no ${statusFilter.toLowerCase()} materials in the cabinet.`
+      : `There are no ${category.toLowerCase()} materials in the cabinet.`;
+  return <div className="mt-4 rounded-xl border border-dashed border-[#e6b9bf] bg-white px-6 py-16 text-center soft-shadow"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-[#fff0f2] text-[#e40012]"><Search size={24} /></span><h3 className="mt-5 text-lg font-extrabold tracking-[-0.04em]">Nothing in this view yet.</h3><p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#7b8490]">{message} Try another filter, or add the material if it belongs here.</p><div className="mt-6 flex flex-wrap justify-center gap-2"><button type="button" onClick={onReset} className="rounded-lg border border-[#f0d5d9] px-3.5 py-2.5 text-xs font-bold text-[#5d687b] hover:bg-[#fff0f2]" data-testid="button-reset-filters">Clear filters</button><button type="button" onClick={onAdd} className="rounded-lg bg-[#e40012] px-3.5 py-2.5 text-xs font-bold text-white hover:bg-[#c80010]" data-testid="button-empty-add">Add material</button></div></div>;
 }
 
  function ItemDialog({ dialog, onClose, onSave }: { dialog: { mode: 'add' | 'edit'; item?: InventoryItem }; onClose: () => void; onSave: (event: FormEvent<HTMLFormElement>) => void }) {
