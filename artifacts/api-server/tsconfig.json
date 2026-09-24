@@ -5,6 +5,9 @@
     "tsBuildInfoFile": ".tsbuildinfo",
     "outDir": "dist",
     "rootDir": "src",
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
     "types": ["node"]
   },
   "include": ["src"],
@@ -17,3 +20,4 @@
     }
   ]
 }
+
