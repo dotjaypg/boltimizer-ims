@@ -24,10 +24,16 @@ export const getInventoryStateResponseItemsItemQuantityMin = 0;
 
 export const getInventoryStateResponseItemsItemThresholdMin = 0;
 
+export const getInventoryStateResponseItemsItemPricePerUnitMin = 0;
+
 
 export const getInventoryStateResponseActivitiesItemQuantityAfterMin = 0;
 
 
+export const getInventoryStateResponseAuditRecordsItemPricePerUnitMin = 0;
+
+
+export const getInventoryStateResponseBorrowedItemsItemPricePerUnitMin = 0;
 
 
 
@@ -40,7 +46,9 @@ export const GetInventoryStateResponse = zod.object({
   "unit": zod.string(),
   "threshold": zod.number().int().min(getInventoryStateResponseItemsItemThresholdMin),
   "location": zod.string(),
-  "note": zod.string().nullish()
+  "note": zod.string().nullish(),
+  "pricePerUnit": zod.number().min(getInventoryStateResponseItemsItemPricePerUnitMin),
+  "imageUrl": zod.string().url().nullable()
 })),
   "activities": zod.array(zod.object({
   "id": zod.string(),
@@ -62,6 +70,7 @@ export const GetInventoryStateResponse = zod.object({
   "requesterName": zod.string(),
   "department": zod.string(),
   "purpose": zod.string(),
+  "pricePerUnit": zod.number().min(getInventoryStateResponseAuditRecordsItemPricePerUnitMin),
   "createdAt": zod.coerce.date()
 })),
   "borrowedItems": zod.array(zod.object({
@@ -76,6 +85,7 @@ export const GetInventoryStateResponse = zod.object({
   "dateReturned": zod.coerce.date().nullable(),
   "conditionReturned": zod.string().nullable(),
   "status": zod.enum(['Borrowed', 'Broke', 'Returned']),
+  "pricePerUnit": zod.number().min(getInventoryStateResponseBorrowedItemsItemPricePerUnitMin),
   "createdAt": zod.coerce.date()
 }))
 })
@@ -91,6 +101,8 @@ export const bootstrapInventoryBodyItemsItemQuantityMin = 0;
 
 export const bootstrapInventoryBodyItemsItemThresholdMin = 0;
 
+
+export const bootstrapInventoryBodyItemsItemPricePerUnitMin = 0;
 
 
 export const bootstrapInventoryBodyActivitiesItemQuantityAfterMin = 0;
@@ -115,7 +127,9 @@ export const BootstrapInventoryBody = zod.object({
   "unit": zod.string().min(1),
   "threshold": zod.number().int().min(bootstrapInventoryBodyItemsItemThresholdMin),
   "location": zod.string().min(1),
-  "note": zod.string().nullish()
+  "note": zod.string().nullish(),
+  "pricePerUnit": zod.number().min(bootstrapInventoryBodyItemsItemPricePerUnitMin),
+  "imageUrl": zod.string().url().nullish()
 })),
   "activities": zod.array(zod.object({
   "id": zod.string(),
@@ -151,10 +165,16 @@ export const bootstrapInventoryResponseItemsItemQuantityMin = 0;
 
 export const bootstrapInventoryResponseItemsItemThresholdMin = 0;
 
+export const bootstrapInventoryResponseItemsItemPricePerUnitMin = 0;
+
 
 export const bootstrapInventoryResponseActivitiesItemQuantityAfterMin = 0;
 
 
+export const bootstrapInventoryResponseAuditRecordsItemPricePerUnitMin = 0;
+
+
+export const bootstrapInventoryResponseBorrowedItemsItemPricePerUnitMin = 0;
 
 
 
@@ -167,7 +187,9 @@ export const BootstrapInventoryResponse = zod.object({
   "unit": zod.string(),
   "threshold": zod.number().int().min(bootstrapInventoryResponseItemsItemThresholdMin),
   "location": zod.string(),
-  "note": zod.string().nullish()
+  "note": zod.string().nullish(),
+  "pricePerUnit": zod.number().min(bootstrapInventoryResponseItemsItemPricePerUnitMin),
+  "imageUrl": zod.string().url().nullable()
 })),
   "activities": zod.array(zod.object({
   "id": zod.string(),
@@ -189,6 +211,7 @@ export const BootstrapInventoryResponse = zod.object({
   "requesterName": zod.string(),
   "department": zod.string(),
   "purpose": zod.string(),
+  "pricePerUnit": zod.number().min(bootstrapInventoryResponseAuditRecordsItemPricePerUnitMin),
   "createdAt": zod.coerce.date()
 })),
   "borrowedItems": zod.array(zod.object({
@@ -203,6 +226,7 @@ export const BootstrapInventoryResponse = zod.object({
   "dateReturned": zod.coerce.date().nullable(),
   "conditionReturned": zod.string().nullable(),
   "status": zod.enum(['Borrowed', 'Broke', 'Returned']),
+  "pricePerUnit": zod.number().min(bootstrapInventoryResponseBorrowedItemsItemPricePerUnitMin),
   "createdAt": zod.coerce.date()
 }))
 })
@@ -219,6 +243,8 @@ export const createInventoryItemBodyQuantityMin = 0;
 export const createInventoryItemBodyThresholdMin = 0;
 
 
+export const createInventoryItemBodyPricePerUnitMin = 0;
+
 
 
 export const CreateInventoryItemBody = zod.object({
@@ -229,12 +255,16 @@ export const CreateInventoryItemBody = zod.object({
   "unit": zod.string().min(1),
   "threshold": zod.number().int().min(createInventoryItemBodyThresholdMin),
   "location": zod.string().min(1),
-  "note": zod.string().nullish()
+  "note": zod.string().nullish(),
+  "pricePerUnit": zod.number().min(createInventoryItemBodyPricePerUnitMin),
+  "imageUrl": zod.string().url().nullish()
 })
 
 export const createInventoryItemResponseQuantityMin = 0;
 
 export const createInventoryItemResponseThresholdMin = 0;
+
+export const createInventoryItemResponsePricePerUnitMin = 0;
 
 
 
@@ -246,7 +276,9 @@ export const CreateInventoryItemResponse = zod.object({
   "unit": zod.string(),
   "threshold": zod.number().int().min(createInventoryItemResponseThresholdMin),
   "location": zod.string(),
-  "note": zod.string().nullish()
+  "note": zod.string().nullish(),
+  "pricePerUnit": zod.number().min(createInventoryItemResponsePricePerUnitMin),
+  "imageUrl": zod.string().url().nullable()
 })
 
 
@@ -261,6 +293,8 @@ export const importInventoryItemsBodyItemsItemQuantityMin = 0;
 export const importInventoryItemsBodyItemsItemThresholdMin = 0;
 
 
+export const importInventoryItemsBodyItemsItemPricePerUnitMin = 0;
+
 
 
 
@@ -273,7 +307,9 @@ export const ImportInventoryItemsBody = zod.object({
   "unit": zod.string().min(1),
   "threshold": zod.number().int().min(importInventoryItemsBodyItemsItemThresholdMin),
   "location": zod.string().min(1),
-  "note": zod.string().nullish()
+  "note": zod.string().nullish(),
+  "pricePerUnit": zod.number().min(importInventoryItemsBodyItemsItemPricePerUnitMin),
+  "imageUrl": zod.string().url().nullish()
 })).min(1)
 })
 
@@ -282,6 +318,8 @@ export const importInventoryItemsResponseInsertedCountMin = 0;
 export const importInventoryItemsResponseItemsItemQuantityMin = 0;
 
 export const importInventoryItemsResponseItemsItemThresholdMin = 0;
+
+export const importInventoryItemsResponseItemsItemPricePerUnitMin = 0;
 
 
 
@@ -295,7 +333,9 @@ export const ImportInventoryItemsResponse = zod.object({
   "unit": zod.string(),
   "threshold": zod.number().int().min(importInventoryItemsResponseItemsItemThresholdMin),
   "location": zod.string(),
-  "note": zod.string().nullish()
+  "note": zod.string().nullish(),
+  "pricePerUnit": zod.number().min(importInventoryItemsResponseItemsItemPricePerUnitMin),
+  "imageUrl": zod.string().url().nullable()
 }))
 })
 
@@ -315,6 +355,8 @@ export const updateInventoryItemBodyQuantityMin = 0;
 export const updateInventoryItemBodyThresholdMin = 0;
 
 
+export const updateInventoryItemBodyPricePerUnitMin = 0;
+
 
 
 export const UpdateInventoryItemBody = zod.object({
@@ -325,12 +367,16 @@ export const UpdateInventoryItemBody = zod.object({
   "unit": zod.string().min(1),
   "threshold": zod.number().int().min(updateInventoryItemBodyThresholdMin),
   "location": zod.string().min(1),
-  "note": zod.string().nullish()
+  "note": zod.string().nullish(),
+  "pricePerUnit": zod.number().min(updateInventoryItemBodyPricePerUnitMin),
+  "imageUrl": zod.string().url().nullish()
 })
 
 export const updateInventoryItemResponseQuantityMin = 0;
 
 export const updateInventoryItemResponseThresholdMin = 0;
+
+export const updateInventoryItemResponsePricePerUnitMin = 0;
 
 
 
@@ -342,7 +388,9 @@ export const UpdateInventoryItemResponse = zod.object({
   "unit": zod.string(),
   "threshold": zod.number().int().min(updateInventoryItemResponseThresholdMin),
   "location": zod.string(),
-  "note": zod.string().nullish()
+  "note": zod.string().nullish(),
+  "pricePerUnit": zod.number().min(updateInventoryItemResponsePricePerUnitMin),
+  "imageUrl": zod.string().url().nullable()
 })
 
 
@@ -406,6 +454,8 @@ export const CreateAuditRecordBody = zod.object({
 })
 
 
+export const createAuditRecordResponsePricePerUnitMin = 0;
+
 
 
 export const CreateAuditRecordResponse = zod.object({
@@ -418,6 +468,7 @@ export const CreateAuditRecordResponse = zod.object({
   "requesterName": zod.string(),
   "department": zod.string(),
   "purpose": zod.string(),
+  "pricePerUnit": zod.number().min(createAuditRecordResponsePricePerUnitMin),
   "createdAt": zod.coerce.date()
 })
 
@@ -453,6 +504,8 @@ export const CreateBorrowedItemBody = zod.object({
 })
 
 
+export const createBorrowedItemResponsePricePerUnitMin = 0;
+
 
 
 export const CreateBorrowedItemResponse = zod.object({
@@ -467,6 +520,7 @@ export const CreateBorrowedItemResponse = zod.object({
   "dateReturned": zod.coerce.date().nullable(),
   "conditionReturned": zod.string().nullable(),
   "status": zod.enum(['Borrowed', 'Broke', 'Returned']),
+  "pricePerUnit": zod.number().min(createBorrowedItemResponsePricePerUnitMin),
   "createdAt": zod.coerce.date()
 })
 
@@ -496,6 +550,8 @@ export const UpdateBorrowedItemBody = zod.object({
 })
 
 
+export const updateBorrowedItemResponsePricePerUnitMin = 0;
+
 
 
 export const UpdateBorrowedItemResponse = zod.object({
@@ -510,6 +566,7 @@ export const UpdateBorrowedItemResponse = zod.object({
   "dateReturned": zod.coerce.date().nullable(),
   "conditionReturned": zod.string().nullable(),
   "status": zod.enum(['Borrowed', 'Broke', 'Returned']),
+  "pricePerUnit": zod.number().min(updateBorrowedItemResponsePricePerUnitMin),
   "createdAt": zod.coerce.date()
 })
 

@@ -1,0 +1,1 @@
+- [Inventory image persistence](inventory-image-persistence.md) — keep images as validated URLs until protected object storage uploads are available.

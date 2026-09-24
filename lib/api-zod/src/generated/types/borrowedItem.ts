@@ -22,5 +22,7 @@ export interface BorrowedItem {
   /** @nullable */
   conditionReturned: string | null;
   status: BorrowedItemStatus;
+  /** @minimum 0 */
+  pricePerUnit: number;
   createdAt: Date;
 }

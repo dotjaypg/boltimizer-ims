@@ -19,4 +19,8 @@ export interface InventoryItem {
   location: string;
   /** @nullable */
   note?: string | null;
+  /** @minimum 0 */
+  pricePerUnit: number;
+  /** @nullable */
+  imageUrl: string | null;
 }

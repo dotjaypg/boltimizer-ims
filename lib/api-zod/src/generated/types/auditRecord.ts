@@ -17,5 +17,7 @@ export interface AuditRecord {
   requesterName: string;
   department: string;
   purpose: string;
+  /** @minimum 0 */
+  pricePerUnit: number;
   createdAt: Date;
 }

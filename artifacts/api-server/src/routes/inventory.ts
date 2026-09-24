@@ -45,6 +45,8 @@ function toInventoryItem(item: typeof inventoryItemsTable.$inferSelect): Invento
     threshold: item.threshold,
     location: item.location,
     note: item.note ?? null,
+    pricePerUnit: item.pricePerUnit,
+    imageUrl: item.imageUrl ?? null,
   };
 }
 
@@ -61,7 +63,7 @@ function toStockActivity(activity: typeof stockActivitiesTable.$inferSelect) {
   };
 }
 
-function toAuditRecord(record: typeof auditRecordsTable.$inferSelect) {
+function toAuditRecord(record: typeof auditRecordsTable.$inferSelect, pricePerUnit = 0) {
   return {
     id: record.id,
     date: record.date,
@@ -72,11 +74,12 @@ function toAuditRecord(record: typeof auditRecordsTable.$inferSelect) {
     requesterName: record.requesterName,
     department: record.department,
     purpose: record.purpose,
+    pricePerUnit,
     createdAt: record.createdAt.toISOString(),
   };
 }
 
-function toBorrowedItem(record: typeof borrowedItemsTable.$inferSelect) {
+function toBorrowedItem(record: typeof borrowedItemsTable.$inferSelect, pricePerUnit = 0) {
   return {
     id: record.id,
     dateBorrowed: record.dateBorrowed,
@@ -89,6 +92,7 @@ function toBorrowedItem(record: typeof borrowedItemsTable.$inferSelect) {
     dateReturned: record.dateReturned,
     conditionReturned: record.conditionReturned,
     status: record.status as "Borrowed" | "Broke" | "Returned",
+    pricePerUnit,
     createdAt: record.createdAt.toISOString(),
   };
 }
@@ -104,12 +108,13 @@ async function readState() {
     db.select().from(auditRecordsTable).orderBy(desc(auditRecordsTable.createdAt)).limit(100),
     db.select().from(borrowedItemsTable).orderBy(desc(borrowedItemsTable.createdAt)).limit(100),
   ]);
+  const priceByItemId = new Map(items.map((item) => [item.id, item.pricePerUnit]));
 
   return GetInventoryStateResponse.parse({
     items: items.map(toInventoryItem),
     activities: activities.map(toStockActivity),
-    auditRecords: auditRecords.map(toAuditRecord),
-    borrowedItems: borrowedItems.map(toBorrowedItem),
+    auditRecords: auditRecords.map((record) => toAuditRecord(record, priceByItemId.get(record.itemId) ?? 0)),
+    borrowedItems: borrowedItems.map((record) => toBorrowedItem(record, priceByItemId.get(record.itemId) ?? 0)),
   });
 }
 
@@ -145,6 +150,8 @@ router.post("/inventory/bootstrap", async (req, res): Promise<void> => {
           threshold: item.threshold,
           location: item.location,
           note: item.note ?? null,
+          pricePerUnit: item.pricePerUnit,
+          imageUrl: item.imageUrl ?? null,
         })));
       }
       if (parsed.data.activities.length) {
@@ -243,6 +250,8 @@ router.post("/inventory/import", async (req, res): Promise<void> => {
     threshold: item.threshold,
     location: item.location,
     note: item.note ?? null,
+    pricePerUnit: item.pricePerUnit,
+    imageUrl: item.imageUrl ?? null,
   }))).returning();
 
   res.status(201).json(ImportInventoryItemsResponse.parse({
@@ -382,7 +391,7 @@ router.post("/inventory/audit-records", async (req, res): Promise<void> => {
     if (!record) {
       throw new Error("Audit record insert returned no record");
     }
-    return { kind: "created" as const, record: record! };
+    return { kind: "created" as const, record: record!, itemPrice: item.pricePerUnit };
   });
 
   if (result.kind === "not_found") {
@@ -393,7 +402,7 @@ router.post("/inventory/audit-records", async (req, res): Promise<void> => {
     res.status(409).json({ error: `${result.itemName} has only ${result.available} ${result.unit} available.` });
     return;
   }
-  res.status(201).json(CreateAuditRecordResponse.parse(toAuditRecord(result.record!)));
+  res.status(201).json(CreateAuditRecordResponse.parse(toAuditRecord(result.record!, result.itemPrice)));
 });
 
 router.delete("/inventory/audit-records/:id", async (req, res): Promise<void> => {
@@ -487,7 +496,7 @@ router.post("/inventory/borrowed-items", async (req, res): Promise<void> => {
       status: parsed.data.status,
     }).returning();
     if (!record) throw new Error("Borrowed item insert returned no record");
-    return { kind: "created" as const, record };
+    return { kind: "created" as const, record, itemPrice: item.pricePerUnit };
   });
 
   if (result.kind === "not_found") {
@@ -498,7 +507,7 @@ router.post("/inventory/borrowed-items", async (req, res): Promise<void> => {
     res.status(409).json({ error: `${result.itemName} has only ${result.available} ${result.unit} available.` });
     return;
   }
-  res.status(201).json(CreateBorrowedItemResponse.parse(toBorrowedItem(result.record!)));
+  res.status(201).json(CreateBorrowedItemResponse.parse(toBorrowedItem(result.record!, result.itemPrice)));
 });
 
 router.patch("/inventory/borrowed-items/:id", async (req, res): Promise<void> => {
@@ -566,7 +575,7 @@ router.patch("/inventory/borrowed-items/:id", async (req, res): Promise<void> =>
       updatedAt: new Date(),
     }).where(eq(borrowedItemsTable.id, existing.id)).returning();
     if (!record) throw new Error("Borrowed item update returned no record");
-    return { kind: "updated" as const, record };
+    return { kind: "updated" as const, record, itemPrice: item.pricePerUnit };
   });
 
   if (result.kind === "not_found") {
@@ -581,7 +590,7 @@ router.patch("/inventory/borrowed-items/:id", async (req, res): Promise<void> =>
     res.status(409).json({ error: `${result.itemName} has only ${result.available} ${result.unit} available.` });
     return;
   }
-  res.json(UpdateBorrowedItemResponse.parse(toBorrowedItem(result.record!)));
+  res.json(UpdateBorrowedItemResponse.parse(toBorrowedItem(result.record!, result.itemPrice)));
 });
 
 router.delete("/inventory/borrowed-items/:id", async (req, res): Promise<void> => {

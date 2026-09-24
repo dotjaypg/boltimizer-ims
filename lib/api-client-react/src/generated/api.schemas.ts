@@ -36,6 +36,10 @@ export interface InventoryItem {
   location: string;
   /** @nullable */
   note?: string | null;
+  /** @minimum 0 */
+  pricePerUnit: number;
+  /** @nullable */
+  imageUrl: string | null;
 }
 
 export type InventoryItemInputCategory = typeof InventoryItemInputCategory[keyof typeof InventoryItemInputCategory];
@@ -69,6 +73,10 @@ export interface InventoryItemInput {
   location: string;
   /** @nullable */
   note?: string | null;
+  /** @minimum 0 */
+  pricePerUnit: number;
+  /** @nullable */
+  imageUrl?: string | null;
 }
 
 export type StockActivityAction = typeof StockActivityAction[keyof typeof StockActivityAction];
@@ -103,6 +111,8 @@ export interface AuditRecord {
   requesterName: string;
   department: string;
   purpose: string;
+  /** @minimum 0 */
+  pricePerUnit: number;
   createdAt: string;
 }
 
@@ -195,6 +205,8 @@ export interface BorrowedItem {
   /** @nullable */
   conditionReturned: string | null;
   status: BorrowedItemStatus;
+  /** @minimum 0 */
+  pricePerUnit: number;
   createdAt: string;
 }
 
