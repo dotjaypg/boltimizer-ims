@@ -83,8 +83,6 @@ paths:
                 $ref: "#/components/schemas/UploadUrlResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
   /storage/public-objects/{filePath}:

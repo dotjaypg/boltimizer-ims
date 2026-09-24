@@ -40,7 +40,6 @@ import type {
   LogoutBrowserSessionParams,
   NotFoundResponse,
   StockActivity,
-  UnauthorizedResponse,
   UploadUrlRequest,
   UploadUrlResponse
 } from './api.schemas';
@@ -436,7 +435,7 @@ return customFetch<UploadUrlResponse>(getRequestUploadUrlUrl(),
 
 export const getRequestUploadUrlMutationKey = () => ['requestUploadUrl'] as const;
 
-export const getRequestUploadUrlMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | InternalErrorResponse>,
+export const getRequestUploadUrlMutationOptions = <TError = ErrorType<BadRequestResponse | InternalErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,RequestUploadUrlMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,RequestUploadUrlMutationVariables, TContext> => {
 
@@ -465,13 +464,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type RequestUploadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof requestUploadUrl>>>
     export type RequestUploadUrlMutationBody = BodyType<UploadUrlRequest>
-    export type RequestUploadUrlMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | InternalErrorResponse>
+    export type RequestUploadUrlMutationError = ErrorType<BadRequestResponse | InternalErrorResponse>
     export type RequestUploadUrlMutationVariables = {data: BodyType<UploadUrlRequest>}
 
     /**
  * @summary Request a presigned URL for file upload
  */
-export const useRequestUploadUrl = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | InternalErrorResponse>,
+export const useRequestUploadUrl = <TError = ErrorType<BadRequestResponse | InternalErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,RequestUploadUrlMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof requestUploadUrl>>,

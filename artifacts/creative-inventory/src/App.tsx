@@ -37,7 +37,6 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
-import { useAuth } from '@workspace/replit-auth-web';
 import {
   adjustInventoryQuantity,
   bootstrapInventory,
@@ -217,7 +216,6 @@ async function uploadInventoryImage(file: File) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
   });
-  if (response.status === 401) throw new Error('Log in before uploading an image.');
   if (!response.ok) throw new Error('The image upload could not be started.');
   const upload = await response.json() as { uploadURL?: string; objectPath?: string };
   if (!upload.uploadURL || !upload.objectPath) throw new Error('The upload response was incomplete.');
@@ -286,7 +284,6 @@ function recordDateInRange(value: string, period: AnalyticsPeriod, now = new Dat
 }
 
 function Dashboard() {
-  const { isAuthenticated, isLoading: isAuthLoading, user, login, logout } = useAuth();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [activities, setActivities] = useState<StockActivity[]>([]);
   const [auditRecords, setAuditRecords] = useState<AuditRecord[]>([]);
@@ -452,11 +449,6 @@ function Dashboard() {
     let imageUrl = String(form.get('imageUrl') || '').trim() || null;
     try {
       if (selectedImage instanceof File && selectedImage.size > 0) {
-        if (!isAuthenticated) {
-          showToast('Log in to upload an image.', 'neutral');
-          login();
-          return;
-        }
         imageUrl = await uploadInventoryImage(selectedImage);
       }
     } catch (error) {
@@ -716,7 +708,6 @@ function Dashboard() {
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
               <button type="button" onClick={() => { setView('inventory'); window.setTimeout(() => searchRef.current?.focus(), 20); }} className="hidden items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-[#747983] hover:bg-[#fff0f2] md:flex" data-testid="button-focus-search"><Search size={15} /> Find material <kbd className="rounded border border-[#f0d5d9] bg-[#fff7f8] px-1.5 py-0.5 font-mono text-[9px]">/</kbd></button>
-               {isAuthLoading ? <span className="hidden font-mono text-[10px] uppercase tracking-wider text-[#a18a90] sm:inline">Checking access</span> : isAuthenticated ? <button type="button" onClick={logout} className="rounded-lg px-2.5 py-2 text-xs font-semibold text-[#677286] hover:bg-[#fff0f2] hover:text-[#111522]" data-testid="button-auth-logout">{user?.firstName || 'Account'} · Log out</button> : <button type="button" onClick={login} className="rounded-lg border border-[#f0d5d9] bg-[#fff8f9] px-2.5 py-2 text-xs font-bold text-[#a9000d] hover:bg-[#fff0f2]" data-testid="button-auth-login">Log in to upload</button>}
             </div>
           </header>
 
