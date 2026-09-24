@@ -732,11 +732,10 @@ function Dashboard() {
                 <div className="flex items-start justify-between gap-4">
                    <div><p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">Operations pulse</p><h2 className="mt-1 text-lg font-extrabold tracking-[-0.04em]">What needs a decision?</h2></div>
                 </div>
-                <div className="mt-5 space-y-2">
-                   {lowStock.slice(0, 3).map((item) => <LowStockRow key={item.id} item={item} onAdjust={adjustQuantity} onEdit={() => setDialog({ mode: 'edit', item })} />)}
-                   {outOfStock.slice(0, 2).map((item) => <LowStockRow key={item.id} item={item} onAdjust={adjustQuantity} onEdit={() => setDialog({ mode: 'edit', item })} />)}
+                 <div className="panel-scroll mt-5 h-[360px] overflow-y-auto pr-2">
+                    {lowStock.map((item) => <LowStockRow key={item.id} item={item} onAdjust={adjustQuantity} onEdit={() => setDialog({ mode: 'edit', item })} />)}
+                    {outOfStock.map((item) => <LowStockRow key={item.id} item={item} onAdjust={adjustQuantity} onEdit={() => setDialog({ mode: 'edit', item })} />)}
                    {!lowStock.length && !outOfStock.length && <div className="flex items-center gap-3 rounded-xl bg-[#e2f0e5] px-4 py-4 text-sm text-[#2e604d]"><Check size={18} /><span>Everything is above its minimum threshold. Nice and quiet.</span></div>}
-                   {lowStock.length + outOfStock.length > 5 && <p className="px-1 pt-2 font-mono text-[10px] uppercase tracking-wider text-[#87909e]">+ {lowStock.length + outOfStock.length - 5} more in inventory</p>}
                 </div>
               </div>
               <ActivityLog activities={activities} />
@@ -844,8 +843,8 @@ function ActivityLog({ activities }: { activities: StockActivity[] }) {
     <div className="relative">
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#f6a6ad]">Stock activity</p>
       <h2 className="mt-1 text-lg font-extrabold tracking-[-0.04em]">Recent movements</h2>
-      {activities.length ? <div className="mt-5 space-y-2">
-        {activities.slice(0, 5).map((activity) => {
+      {activities.length ? <div className="panel-scroll mt-5 h-[360px] space-y-2 overflow-y-auto pr-2">
+        {activities.map((activity) => {
           const isStock = activity.action === 'stock';
           const Icon = isStock ? PlusCircle : MinusCircle;
           return <div key={activity.id} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[.06] px-3 py-3">
@@ -966,7 +965,7 @@ function RecordsView({ items, records, borrowedItems, onSave, onDelete }: { item
            <span className="rounded-full bg-[#fff0f2] px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#a9000d]">{combinedRecords.length} records</span>
         </div>
 
-         {combinedRecords.length ? <div className="mt-5 space-y-2">
+          {combinedRecords.length ? <div className="panel-scroll mt-5 h-[540px] space-y-2 overflow-y-auto pr-2">
            {combinedRecords.map((record) => <div key={record.id} className="rounded-lg border border-[#f0dfe2] bg-[#fff8f9] p-4" data-testid={`record-log-${record.id}`}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -1050,8 +1049,8 @@ function BorrowedView({ records, onAdd, onEdit, onDelete }: { records: BorrowedI
         <div><p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">Handoff history</p><h2 className="mt-1 text-lg font-extrabold tracking-[-0.04em]">Active and closed pull-outs</h2></div>
         <span className="rounded-full bg-[#fff0f2] px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#a9000d]" data-testid="text-borrowed-count">{records.length} records</span>
       </div>
-      {records.length ? <div className="overflow-x-auto"><table className="w-full min-w-[1060px] border-collapse text-left">
-        <thead><tr className="border-b border-[#f0dfe2] text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><th className="px-5 py-4 font-mono font-medium">Borrower / item</th><th className="px-3 py-4 font-mono font-medium">Date borrowed</th><th className="px-3 py-4 font-mono font-medium">Qty</th><th className="px-3 py-4 font-mono font-medium">Condition out</th><th className="px-3 py-4 font-mono font-medium">Date returned</th><th className="px-3 py-4 font-mono font-medium">Condition in</th><th className="px-3 py-4 font-mono font-medium">Status</th><th className="px-5 py-4 text-right font-mono font-medium">Actions</th></tr></thead>
+      {records.length ? <div className="inventory-table-scroll h-[520px] overflow-auto"><table className="w-full min-w-[1060px] border-collapse text-left">
+        <thead className="sticky top-0 z-20 bg-white"><tr className="border-b border-[#f0dfe2] bg-[#fff7f8] text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><th className="px-5 py-4 font-mono font-medium">Borrower / item</th><th className="px-3 py-4 font-mono font-medium">Date borrowed</th><th className="px-3 py-4 font-mono font-medium">Qty</th><th className="px-3 py-4 font-mono font-medium">Condition out</th><th className="px-3 py-4 font-mono font-medium">Date returned</th><th className="px-3 py-4 font-mono font-medium">Condition in</th><th className="px-3 py-4 font-mono font-medium">Status</th><th className="px-5 py-4 text-right font-mono font-medium">Actions</th></tr></thead>
         <tbody>{records.map((record) => <BorrowedRow key={record.id} record={record} onEdit={() => onEdit(record)} onDelete={() => onDelete(record)} />)}</tbody>
       </table></div> : <div className="px-6 py-16 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-[#fff0f2] text-[#e40012]"><PackageOpen size={22} /></span><h3 className="mt-4 text-base font-extrabold">No pull-outs recorded.</h3><p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#777c86]">When a tool or material leaves the cabinet, log it here so the next handoff starts with a clean count.</p></div>}
     </div>
