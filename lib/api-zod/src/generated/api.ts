@@ -9,6 +9,98 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Get the currently authenticated user
+ */
+export const GetCurrentAuthUserResponse = zod.object({
+  "user": zod.union([zod.object({
+  "id": zod.string(),
+  "email": zod.string().email().nullable(),
+  "firstName": zod.string().nullable(),
+  "lastName": zod.string().nullable(),
+  "profileImageUrl": zod.string().nullable()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Start the browser OIDC login flow
+ */
+export const BeginBrowserLoginQueryParams = zod.object({
+  "returnTo": zod.coerce.string().optional()
+})
+
+export const BeginBrowserLoginResponse = zod.void()
+
+
+/**
+ * @summary Complete the browser OIDC login flow
+ */
+export const HandleBrowserLoginCallbackResponse = zod.void()
+
+
+/**
+ * @summary Clear the browser session and begin OIDC logout
+ */
+export const logoutBrowserSessionQueryReturnToDefault = `/`;
+
+export const LogoutBrowserSessionQueryParams = zod.object({
+  "returnTo": zod.coerce.string().default(logoutBrowserSessionQueryReturnToDefault)
+})
+
+export const LogoutBrowserSessionResponse = zod.void()
+
+
+/**
+ * @summary Request a presigned URL for file upload
+ */
+
+
+
+
+
+export const RequestUploadUrlBody = zod.object({
+  "name": zod.string().min(1),
+  "size": zod.number().int().min(1),
+  "contentType": zod.string().min(1)
+})
+
+
+
+
+
+
+export const RequestUploadUrlResponse = zod.object({
+  "uploadURL": zod.string().url(),
+  "objectPath": zod.string(),
+  "metadata": zod.object({
+  "name": zod.string().min(1),
+  "size": zod.number().int().min(1),
+  "contentType": zod.string().min(1)
+}).optional()
+})
+
+
+/**
+ * @summary Serve a public asset
+ */
+export const GetPublicObjectParams = zod.object({
+  "filePath": zod.coerce.string()
+})
+
+export const GetPublicObjectResponse = zod.unknown()
+
+
+/**
+ * @summary Serve an uploaded object
+ */
+export const GetStorageObjectParams = zod.object({
+  "objectPath": zod.coerce.string()
+})
+
+export const GetStorageObjectResponse = zod.unknown()
+
+
+/**
  * Returns server health status
  * @summary Health check
  */
@@ -48,7 +140,7 @@ export const GetInventoryStateResponse = zod.object({
   "location": zod.string(),
   "note": zod.string().nullish(),
   "pricePerUnit": zod.number().min(getInventoryStateResponseItemsItemPricePerUnitMin),
-  "imageUrl": zod.string().url().nullable()
+  "imageUrl": zod.string().nullable()
 })),
   "activities": zod.array(zod.object({
   "id": zod.string(),
@@ -129,7 +221,7 @@ export const BootstrapInventoryBody = zod.object({
   "location": zod.string().min(1),
   "note": zod.string().nullish(),
   "pricePerUnit": zod.number().min(bootstrapInventoryBodyItemsItemPricePerUnitMin),
-  "imageUrl": zod.string().url().nullish()
+  "imageUrl": zod.string().nullish()
 })),
   "activities": zod.array(zod.object({
   "id": zod.string(),
@@ -189,7 +281,7 @@ export const BootstrapInventoryResponse = zod.object({
   "location": zod.string(),
   "note": zod.string().nullish(),
   "pricePerUnit": zod.number().min(bootstrapInventoryResponseItemsItemPricePerUnitMin),
-  "imageUrl": zod.string().url().nullable()
+  "imageUrl": zod.string().nullable()
 })),
   "activities": zod.array(zod.object({
   "id": zod.string(),
@@ -257,7 +349,7 @@ export const CreateInventoryItemBody = zod.object({
   "location": zod.string().min(1),
   "note": zod.string().nullish(),
   "pricePerUnit": zod.number().min(createInventoryItemBodyPricePerUnitMin),
-  "imageUrl": zod.string().url().nullish()
+  "imageUrl": zod.string().nullish()
 })
 
 export const createInventoryItemResponseQuantityMin = 0;
@@ -278,7 +370,7 @@ export const CreateInventoryItemResponse = zod.object({
   "location": zod.string(),
   "note": zod.string().nullish(),
   "pricePerUnit": zod.number().min(createInventoryItemResponsePricePerUnitMin),
-  "imageUrl": zod.string().url().nullable()
+  "imageUrl": zod.string().nullable()
 })
 
 
@@ -309,7 +401,7 @@ export const ImportInventoryItemsBody = zod.object({
   "location": zod.string().min(1),
   "note": zod.string().nullish(),
   "pricePerUnit": zod.number().min(importInventoryItemsBodyItemsItemPricePerUnitMin),
-  "imageUrl": zod.string().url().nullish()
+  "imageUrl": zod.string().nullish()
 })).min(1)
 })
 
@@ -335,7 +427,7 @@ export const ImportInventoryItemsResponse = zod.object({
   "location": zod.string(),
   "note": zod.string().nullish(),
   "pricePerUnit": zod.number().min(importInventoryItemsResponseItemsItemPricePerUnitMin),
-  "imageUrl": zod.string().url().nullable()
+  "imageUrl": zod.string().nullable()
 }))
 })
 
@@ -369,7 +461,7 @@ export const UpdateInventoryItemBody = zod.object({
   "location": zod.string().min(1),
   "note": zod.string().nullish(),
   "pricePerUnit": zod.number().min(updateInventoryItemBodyPricePerUnitMin),
-  "imageUrl": zod.string().url().nullish()
+  "imageUrl": zod.string().nullish()
 })
 
 export const updateInventoryItemResponseQuantityMin = 0;
@@ -390,7 +482,7 @@ export const UpdateInventoryItemResponse = zod.object({
   "location": zod.string(),
   "note": zod.string().nullish(),
   "pricePerUnit": zod.number().min(updateInventoryItemResponsePricePerUnitMin),
-  "imageUrl": zod.string().url().nullable()
+  "imageUrl": zod.string().nullable()
 })
 
 

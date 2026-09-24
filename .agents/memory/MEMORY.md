@@ -1,1 +1,1 @@
-- [Inventory image persistence](inventory-image-persistence.md) — keep images as validated URLs until protected object storage uploads are available.
+- [Inventory image persistence](inventory-image-persistence.md) — use external URLs or authenticated App Storage object paths; never store image bytes in the database.

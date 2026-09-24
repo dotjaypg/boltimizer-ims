@@ -19,5 +19,6 @@
 
 export * from "./audit-records";
 export * from "./borrowed-items";
+export * from "./auth";
 export * from "./inventory";
 export * from "./stock-activities";

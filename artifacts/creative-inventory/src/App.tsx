@@ -37,6 +37,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
+import { useAuth } from '@workspace/replit-auth-web';
 import {
   adjustInventoryQuantity,
   bootstrapInventory,
@@ -201,6 +202,35 @@ function safeDate(value: string | null | undefined, fallback = '') {
   return Number.isNaN(parsed.getTime()) ? fallback : value;
 }
 
+function getImageSrc(imageUrl: string | null | undefined) {
+  if (!imageUrl) return undefined;
+  return imageUrl.startsWith('/objects/') ? `/api/storage${imageUrl}` : imageUrl;
+}
+
+async function uploadInventoryImage(file: File) {
+  if (!file.type.startsWith('image/')) throw new Error('Choose an image file.');
+  if (file.size > 10 * 1024 * 1024) throw new Error('Images must be 10 MB or smaller.');
+
+  const response = await fetch('/api/storage/uploads/request-url', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+  });
+  if (response.status === 401) throw new Error('Log in before uploading an image.');
+  if (!response.ok) throw new Error('The image upload could not be started.');
+  const upload = await response.json() as { uploadURL?: string; objectPath?: string };
+  if (!upload.uploadURL || !upload.objectPath) throw new Error('The upload response was incomplete.');
+
+  const uploaded = await fetch(upload.uploadURL, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+  if (!uploaded.ok) throw new Error('The image upload failed.');
+  return upload.objectPath;
+}
+
 function applyApiState(state: Pick<ApiInventoryState, 'items' | 'activities' | 'auditRecords'> & { borrowedItems?: ApiInventoryState['borrowedItems'] }) {
   return {
     items: state.items.map((item) => ({
@@ -256,6 +286,7 @@ function recordDateInRange(value: string, period: AnalyticsPeriod, now = new Dat
 }
 
 function Dashboard() {
+  const { isAuthenticated, isLoading: isAuthLoading, user, login, logout } = useAuth();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [activities, setActivities] = useState<StockActivity[]>([]);
   const [auditRecords, setAuditRecords] = useState<AuditRecord[]>([]);
@@ -277,6 +308,8 @@ function Dashboard() {
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'neutral' } | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const inventoryScrollTopRef = useRef<HTMLDivElement>(null);
+  const inventoryTableScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -415,6 +448,21 @@ function Dashboard() {
     const form = new FormData(event.currentTarget);
     const name = String(form.get('name') || '').trim();
     if (!name) return;
+    const selectedImage = form.get('imageFile');
+    let imageUrl = String(form.get('imageUrl') || '').trim() || null;
+    try {
+      if (selectedImage instanceof File && selectedImage.size > 0) {
+        if (!isAuthenticated) {
+          showToast('Log in to upload an image.', 'neutral');
+          login();
+          return;
+        }
+        imageUrl = await uploadInventoryImage(selectedImage);
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'The image upload failed.', 'neutral');
+      return;
+    }
     const next: InventoryItem = {
       id: dialog?.item?.id || `item-${Date.now()}`,
       name,
@@ -425,7 +473,7 @@ function Dashboard() {
       location: String(form.get('location') || 'Unassigned').trim(),
       note: String(form.get('note') || '').trim(),
       pricePerUnit: Math.max(0, Number(form.get('pricePerUnit')) || 0),
-      imageUrl: String(form.get('imageUrl') || '').trim() || null,
+      imageUrl,
     };
     try {
       if (dialog?.mode === 'edit') {
@@ -605,8 +653,8 @@ function Dashboard() {
   return (
     <div className="inventory-shell paper-grain min-h-[100dvh] text-[#111522]">
       <div className="flex min-h-[100dvh]">
-        <aside
-          className={`fixed inset-y-0 left-0 z-50 flex w-[268px] flex-col border-r border-[#f0dfe2] bg-white px-5 py-6 text-[#111522] shadow-[12px_0_32px_rgba(17,21,34,.08)] transition-transform duration-200 lg:relative lg:z-auto lg:translate-x-0 lg:shadow-none ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+          <aside
+           className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[268px] flex-col overflow-y-auto border-r border-[#f0dfe2] bg-white px-5 py-6 text-[#111522] shadow-[12px_0_32px_rgba(17,21,34,.08)] transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:translate-x-0 lg:shadow-none ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
         >
           <div className="flex items-start justify-between">
             <button type="button" onClick={() => { setView('overview'); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="group text-left" data-testid="button-brand-home">
@@ -660,7 +708,7 @@ function Dashboard() {
         {sidebarOpen && <button type="button" aria-label="Close navigation" className="fixed inset-0 z-40 bg-[#111522]/35 lg:hidden" onClick={() => setSidebarOpen(false)} data-testid="button-overlay-close" />}
 
         <main className="min-w-0 flex-1">
-          <header className="flex h-[76px] items-center justify-between border-b border-[#f0dfe2] bg-white/95 px-5 backdrop-blur-md sm:px-8 lg:px-12">
+          <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between border-b border-[#f0dfe2] bg-white/95 px-5 backdrop-blur-md sm:px-8 lg:px-12">
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => setSidebarOpen(true)} className="relative z-10 rounded-lg p-2 text-[#4e535f] hover:bg-[#fff0f2] lg:hidden" aria-label="Open menu" aria-expanded={sidebarOpen} data-testid="button-open-menu"><Menu size={20} /></button>
                <div className="hidden items-center gap-2 text-xs font-semibold text-[#777c86] sm:flex"><span>Boltimizer operations</span><span className="text-[#e5b7bd]">/</span><span className="text-[#111522]">{view === 'overview' ? 'Overview' : view === 'inventory' ? 'Inventory' : view === 'borrowed' ? 'Borrowed / pull-out' : 'Records'}</span></div>
@@ -668,6 +716,7 @@ function Dashboard() {
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
               <button type="button" onClick={() => { setView('inventory'); window.setTimeout(() => searchRef.current?.focus(), 20); }} className="hidden items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-[#747983] hover:bg-[#fff0f2] md:flex" data-testid="button-focus-search"><Search size={15} /> Find material <kbd className="rounded border border-[#f0d5d9] bg-[#fff7f8] px-1.5 py-0.5 font-mono text-[9px]">/</kbd></button>
+               {isAuthLoading ? <span className="hidden font-mono text-[10px] uppercase tracking-wider text-[#a18a90] sm:inline">Checking access</span> : isAuthenticated ? <button type="button" onClick={logout} className="rounded-lg px-2.5 py-2 text-xs font-semibold text-[#677286] hover:bg-[#fff0f2] hover:text-[#111522]" data-testid="button-auth-logout">{user?.firstName || 'Account'} · Log out</button> : <button type="button" onClick={login} className="rounded-lg border border-[#f0d5d9] bg-[#fff8f9] px-2.5 py-2 text-xs font-bold text-[#a9000d] hover:bg-[#fff0f2]" data-testid="button-auth-login">Log in to upload</button>}
             </div>
           </header>
 
@@ -739,8 +788,9 @@ function Dashboard() {
               </div>
 
               {filteredItems.length > 0 ? (
-                 <div className="mt-4 overflow-hidden rounded-xl border border-[#f0dfe2] bg-white soft-shadow">
-                  <div className="overflow-x-auto">
+                  <div className="mt-4 overflow-hidden rounded-xl border border-[#f0dfe2] bg-white soft-shadow">
+                   <div ref={inventoryScrollTopRef} onScroll={(event) => { if (inventoryTableScrollRef.current) inventoryTableScrollRef.current.scrollLeft = event.currentTarget.scrollLeft; }} className="inventory-scrollbar-top overflow-x-auto border-b border-[#f0dfe2] bg-[#fff7f8]" aria-label="Scroll inventory table horizontally" data-testid="scrollbar-inventory-top"><div className="h-3 min-w-[1020px]" /></div>
+                   <div ref={inventoryTableScrollRef} onScroll={(event) => { if (inventoryScrollTopRef.current) inventoryScrollTopRef.current.scrollLeft = event.currentTarget.scrollLeft; }} className="overflow-x-auto">
                      <table className="w-full min-w-[1020px] border-collapse text-left">
                           <thead><tr className="border-b border-[#f0dfe2] bg-[#fff7f8] text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><th scope="col" className="px-5 py-4 font-mono font-medium">Preview</th><SortableHeader label="Item name" sortKey="name" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Category" sortKey="category" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Quantity in stock" sortKey="quantity" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Unit" sortKey="unit" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Price per Unit" sortKey="pricePerUnit" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Min. threshold" sortKey="threshold" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Operational status" sortKey="status" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Cabinet location" sortKey="location" sort={inventorySort} onSort={sortInventory} /><th scope="col" className="px-5 py-4 text-right font-mono font-medium">Actions</th></tr></thead>
                          <tbody>{filteredItems.map((item) => <InventoryRow key={item.id} item={item} borrowedItems={borrowedItems} flash={flashId === item.id} onAdjust={adjustQuantity} onSetQuantity={setExactQuantity} onEdit={() => setDialog({ mode: 'edit', item })} onDelete={() => setDeleteTarget(item)} />)}</tbody>
@@ -1093,6 +1143,7 @@ function InventoryRow({ item, borrowedItems, flash, onAdjust, onSetQuantity, onE
   const Icon = meta.icon;
   const status = getOperationalStatus(item, borrowedItems);
   const isLow = status === 'Low Stock' || status === 'Out of Stock';
+  const imageSrc = getImageSrc(item.imageUrl);
   useEffect(() => setDraftQuantity(String(item.quantity)), [item.quantity]);
   const commitQuantity = () => {
     const parsed = Number(draftQuantity);
@@ -1101,7 +1152,7 @@ function InventoryRow({ item, borrowedItems, flash, onAdjust, onSetQuantity, onE
     setDraftQuantity(String(Math.max(0, Math.round(nextQuantity))));
   };
   return <tr className={`border-b border-[#e8e0d5] last:border-0 transition-colors hover:bg-[#f8f0e5] ${flash ? 'flash' : ''}`} data-testid={`row-inventory-${item.id}`}>
-     <td className="px-5 py-4"><div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg border border-[#f0dfe2] bg-[#fff0f2] text-sm font-extrabold text-[#e40012]"><img src={item.imageUrl || undefined} alt="" className={`h-full w-full object-cover ${item.imageUrl ? '' : 'hidden'}`} onError={(event) => { event.currentTarget.classList.add('hidden'); event.currentTarget.nextElementSibling?.classList.remove('hidden'); }} /><span className={item.imageUrl ? 'hidden' : ''}>{item.name.slice(0, 1).toUpperCase()}</span></div></td>
+      <td className="px-5 py-4"><div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg border border-[#f0dfe2] bg-[#fff0f2] text-sm font-extrabold text-[#e40012]"><img src={imageSrc} alt="" className={`h-full w-full object-cover ${imageSrc ? '' : 'hidden'}`} onError={(event) => { event.currentTarget.classList.add('hidden'); event.currentTarget.nextElementSibling?.classList.remove('hidden'); }} /><span className={imageSrc ? 'hidden' : ''}>{item.name.slice(0, 1).toUpperCase()}</span></div></td>
      <td className="px-3 py-4"><div className="flex items-center gap-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${meta.tint} ${meta.tone}`}><Icon size={16} /></span><div><p className="text-sm font-bold text-[#25344c]">{item.name}</p><p className="mt-0.5 max-w-[180px] truncate text-xs text-[#8b9199]">{item.note || 'No notes added'}</p></div></div></td>
     <td className="px-3 py-4"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${meta.tint} ${meta.tone}`}>{item.category}</span></td>
     <td className="px-3 py-4"><div className="flex items-center gap-2"><div className={`flex items-center rounded-lg border ${isLow ? 'border-[#e8b7aa] bg-[#fff0eb]' : 'border-[#ddd3c4] bg-[#f9f3e9]'}`}><button type="button" onClick={() => onAdjust(item.id, -1)} className="flex h-8 w-8 items-center justify-center text-[#788294] hover:bg-[#f0e3d6]" aria-label={`Decrease ${item.name}`} data-testid={`button-decrease-${item.id}`}><Minus size={13} /></button><input type="number" min="0" step="1" value={draftQuantity} onChange={(event) => setDraftQuantity(event.target.value)} onBlur={commitQuantity} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commitQuantity(); event.currentTarget.blur(); } }} className={`h-8 w-[48px] border-0 bg-transparent p-0 text-center font-mono text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#e40012]/30 ${isLow ? 'text-[#a95242]' : 'text-[#25344c]'}`} aria-label={`Quantity for ${item.name}`} data-testid={`text-quantity-${item.id}`} /><button type="button" onClick={() => onAdjust(item.id, 1)} className="flex h-8 w-8 items-center justify-center text-[#788294] hover:bg-[#f0e3d6]" aria-label={`Increase ${item.name}`} data-testid={`button-increase-${item.id}`}><Plus size={13} /></button></div>{isLow && <span className="font-mono text-[9px] uppercase tracking-wider text-[#a95242]">Check</span>}</div></td>
@@ -1125,7 +1176,7 @@ function EmptyState({ search, category, statusFilter, onReset, onAdd }: { search
 
  function ItemDialog({ dialog, onClose, onSave }: { dialog: { mode: 'add' | 'edit'; item?: InventoryItem }; onClose: () => void; onSave: (event: FormEvent<HTMLFormElement>) => void }) {
   const item = dialog.item;
-   return <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#111522]/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby="item-dialog-title" data-testid="dialog-item"><div className="max-h-[92dvh] w-full max-w-[560px] overflow-y-auto rounded-t-2xl border border-[#f0dfe2] bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-7"><div className="flex items-start justify-between"><div><p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">{dialog.mode === 'edit' ? 'Edit record' : 'New record'}</p><h2 id="item-dialog-title" className="mt-1 text-2xl font-extrabold tracking-[-0.06em]">{dialog.mode === 'edit' ? 'Update material' : 'Add a material'}</h2><p className="mt-1 text-sm text-[#778191]">Keep the shelf language simple for the next person.</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-[#8a9099] hover:bg-[#fff0f2] hover:text-[#111522]" aria-label="Close dialog" data-testid="button-close-item-dialog"><X size={18} /></button></div><form onSubmit={onSave} className="mt-7 space-y-4"><Field label="Item name" name="name" defaultValue={item?.name} placeholder="e.g. Neon yellow vinyl" required testId="input-item-name" /><div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-bold text-[#4f5c70]">Category</span><select name="category" defaultValue={item?.category || 'Paper'} className="h-11 w-full rounded-xl border border-[#f0dfe2] bg-[#fff8f9] px-3 text-sm text-[#26364d] focus:border-[#e40012] focus:outline-none" data-testid="select-item-category">{categories.slice(1).map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select></label><Field label="Unit" name="unit" defaultValue={item?.unit} placeholder="sheets, rolls..." required testId="input-item-unit" /></div><div className="grid gap-4 sm:grid-cols-2"><Field label="Quantity in stock" name="quantity" type="number" min="0" defaultValue={item?.quantity ?? 0} required testId="input-item-quantity" /><Field label="Minimum threshold" name="threshold" type="number" min="0" defaultValue={item?.threshold ?? 0} required testId="input-item-threshold" /></div><div className="grid gap-4 sm:grid-cols-2"><Field label="Price per unit" name="pricePerUnit" type="number" min="0" defaultValue={item?.pricePerUnit ?? 0} placeholder="0.00" required testId="input-item-price" /><Field label="Image URL" name="imageUrl" type="url" defaultValue={item?.imageUrl ?? ''} placeholder="https://..." testId="input-item-image-url" /></div><Field label="Cabinet location" name="location" defaultValue={item?.location} placeholder="e.g. Bay A · Shelf 2" required testId="input-item-location" /><Field label="Note" name="note" defaultValue={item?.note} placeholder="Optional finish, size, or machine detail" testId="input-item-note" /><div className="flex flex-col-reverse gap-2 border-t border-[#f0dfe2] pt-5 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="rounded-xl px-4 py-3 text-sm font-bold text-[#667184] hover:bg-[#fff0f2]" data-testid="button-cancel-item">Cancel</button><button type="submit" className="rounded-lg bg-[#e40012] px-5 py-3 text-sm font-bold text-white shadow-[3px_3px_0_#111522] hover:bg-[#c80010]" data-testid="button-save-item">{dialog.mode === 'edit' ? 'Save changes' : 'Add to cabinet'}</button></div></form></div></div>;
+    return <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#111522]/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby="item-dialog-title" data-testid="dialog-item"><div className="max-h-[92dvh] w-full max-w-[560px] overflow-y-auto rounded-t-2xl border border-[#f0dfe2] bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-7"><div className="flex items-start justify-between"><div><p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">{dialog.mode === 'edit' ? 'Edit record' : 'New record'}</p><h2 id="item-dialog-title" className="mt-1 text-2xl font-extrabold tracking-[-0.06em]">{dialog.mode === 'edit' ? 'Update material' : 'Add a material'}</h2><p className="mt-1 text-sm text-[#778191]">Keep the shelf language simple for the next person.</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-[#8a9099] hover:bg-[#fff0f2] hover:text-[#111522]" aria-label="Close dialog" data-testid="button-close-item-dialog"><X size={18} /></button></div><form onSubmit={onSave} className="mt-7 space-y-4"><Field label="Item name" name="name" defaultValue={item?.name} placeholder="e.g. Neon yellow vinyl" required testId="input-item-name" /><div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="mb-1.5 block text-xs font-bold text-[#4f5c70]">Category</span><select name="category" defaultValue={item?.category || 'Paper'} className="h-11 w-full rounded-xl border border-[#f0dfe2] bg-[#fff8f9] px-3 text-sm text-[#26364d] focus:border-[#e40012] focus:outline-none" data-testid="select-item-category">{categories.slice(1).map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select></label><Field label="Unit" name="unit" defaultValue={item?.unit} placeholder="sheets, rolls..." required testId="input-item-unit" /></div><div className="grid gap-4 sm:grid-cols-2"><Field label="Quantity in stock" name="quantity" type="number" min="0" defaultValue={item?.quantity ?? 0} required testId="input-item-quantity" /><Field label="Minimum threshold" name="threshold" type="number" min="0" defaultValue={item?.threshold ?? 0} required testId="input-item-threshold" /></div><div className="grid gap-4 sm:grid-cols-2"><Field label="Price per unit" name="pricePerUnit" type="number" min="0" defaultValue={item?.pricePerUnit ?? 0} placeholder="0.00" required testId="input-item-price" /><Field label="Image URL" name="imageUrl" type="text" defaultValue={item?.imageUrl ?? ''} placeholder="https://... or stored path" testId="input-item-image-url" /><label className="block sm:col-span-2"><span className="mb-1.5 block text-xs font-bold text-[#4f535e]">Upload image file</span><input name="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="block h-11 w-full rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 py-2 text-sm text-[#111522] file:mr-3 file:rounded-md file:border-0 file:bg-[#fff0f2] file:px-2.5 file:py-1 file:text-xs file:font-bold file:text-[#a9000d]" data-testid="input-item-image-file" /><p className="mt-1.5 text-[11px] text-[#89909b]">Up to 10 MB. Uploading a file replaces the image URL.</p></label></div><Field label="Cabinet location" name="location" defaultValue={item?.location} placeholder="e.g. Bay A · Shelf 2" required testId="input-item-location" /><Field label="Note" name="note" defaultValue={item?.note} placeholder="Optional finish, size, or machine detail" testId="input-item-note" /><div className="flex flex-col-reverse gap-2 border-t border-[#f0dfe2] pt-5 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="rounded-xl px-4 py-3 text-sm font-bold text-[#667184] hover:bg-[#fff0f2]" data-testid="button-cancel-item">Cancel</button><button type="submit" className="rounded-lg bg-[#e40012] px-5 py-3 text-sm font-bold text-white shadow-[3px_3px_0_#111522] hover:bg-[#c80010]" data-testid="button-save-item">{dialog.mode === 'edit' ? 'Save changes' : 'Add to cabinet'}</button></div></form></div></div>;
 }
 
 function Field({ label, name, defaultValue, placeholder, required, type = 'text', min, testId }: { label: string; name: string; defaultValue?: string | number; placeholder?: string; required?: boolean; type?: string; min?: string; testId: string }) {
