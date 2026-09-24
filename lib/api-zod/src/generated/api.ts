@@ -30,11 +30,12 @@ export const getInventoryStateResponseActivitiesItemQuantityAfterMin = 0;
 
 
 
+
 export const GetInventoryStateResponse = zod.object({
   "items": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
-  "category": zod.string(),
+  "category": zod.enum(['Paper', 'Cards', 'Finishing', 'Vinyl', 'Ink', 'Office', 'Tools', 'Packaging', 'Safety']),
   "quantity": zod.number().int().min(getInventoryStateResponseItemsItemQuantityMin),
   "unit": zod.string(),
   "threshold": zod.number().int().min(getInventoryStateResponseItemsItemThresholdMin),
@@ -62,6 +63,20 @@ export const GetInventoryStateResponse = zod.object({
   "department": zod.string(),
   "purpose": zod.string(),
   "createdAt": zod.coerce.date()
+})),
+  "borrowedItems": zod.array(zod.object({
+  "id": zod.string(),
+  "dateBorrowed": zod.coerce.date(),
+  "borrowerName": zod.string(),
+  "itemId": zod.string(),
+  "itemName": zod.string(),
+  "quantity": zod.number().int().min(1),
+  "unit": zod.string(),
+  "conditionBorrowed": zod.string(),
+  "dateReturned": zod.coerce.date().nullable(),
+  "conditionReturned": zod.string().nullable(),
+  "status": zod.enum(['Borrowed', 'Broke', 'Returned']),
+  "createdAt": zod.coerce.date()
 }))
 })
 
@@ -69,7 +84,6 @@ export const GetInventoryStateResponse = zod.object({
 /**
  * @summary Seed the inventory database
  */
-
 
 
 export const bootstrapInventoryBodyItemsItemQuantityMin = 0;
@@ -88,11 +102,15 @@ export const bootstrapInventoryBodyActivitiesItemQuantityAfterMin = 0;
 
 
 
+
+
+
+
 export const BootstrapInventoryBody = zod.object({
   "items": zod.array(zod.object({
   "id": zod.string().min(1),
   "name": zod.string().min(1),
-  "category": zod.string().min(1),
+  "category": zod.enum(['Paper', 'Cards', 'Finishing', 'Vinyl', 'Ink', 'Office', 'Tools', 'Packaging', 'Safety']),
   "quantity": zod.number().int().min(bootstrapInventoryBodyItemsItemQuantityMin),
   "unit": zod.string().min(1),
   "threshold": zod.number().int().min(bootstrapInventoryBodyItemsItemThresholdMin),
@@ -116,6 +134,16 @@ export const BootstrapInventoryBody = zod.object({
   "requesterName": zod.string().min(1),
   "department": zod.string().min(1),
   "purpose": zod.string().min(1)
+})),
+  "borrowedItems": zod.array(zod.object({
+  "dateBorrowed": zod.coerce.date(),
+  "borrowerName": zod.string().min(1),
+  "itemId": zod.string().min(1),
+  "quantity": zod.number().int().min(1),
+  "conditionBorrowed": zod.string().min(1),
+  "dateReturned": zod.coerce.date().nullish(),
+  "conditionReturned": zod.string().nullish(),
+  "status": zod.enum(['Borrowed', 'Broke', 'Returned'])
 }))
 })
 
@@ -129,11 +157,12 @@ export const bootstrapInventoryResponseActivitiesItemQuantityAfterMin = 0;
 
 
 
+
 export const BootstrapInventoryResponse = zod.object({
   "items": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
-  "category": zod.string(),
+  "category": zod.enum(['Paper', 'Cards', 'Finishing', 'Vinyl', 'Ink', 'Office', 'Tools', 'Packaging', 'Safety']),
   "quantity": zod.number().int().min(bootstrapInventoryResponseItemsItemQuantityMin),
   "unit": zod.string(),
   "threshold": zod.number().int().min(bootstrapInventoryResponseItemsItemThresholdMin),
@@ -161,6 +190,20 @@ export const BootstrapInventoryResponse = zod.object({
   "department": zod.string(),
   "purpose": zod.string(),
   "createdAt": zod.coerce.date()
+})),
+  "borrowedItems": zod.array(zod.object({
+  "id": zod.string(),
+  "dateBorrowed": zod.coerce.date(),
+  "borrowerName": zod.string(),
+  "itemId": zod.string(),
+  "itemName": zod.string(),
+  "quantity": zod.number().int().min(1),
+  "unit": zod.string(),
+  "conditionBorrowed": zod.string(),
+  "dateReturned": zod.coerce.date().nullable(),
+  "conditionReturned": zod.string().nullable(),
+  "status": zod.enum(['Borrowed', 'Broke', 'Returned']),
+  "createdAt": zod.coerce.date()
 }))
 })
 
@@ -168,7 +211,6 @@ export const BootstrapInventoryResponse = zod.object({
 /**
  * @summary Create an inventory item
  */
-
 
 
 export const createInventoryItemBodyQuantityMin = 0;
@@ -182,7 +224,7 @@ export const createInventoryItemBodyThresholdMin = 0;
 export const CreateInventoryItemBody = zod.object({
   "id": zod.string().min(1),
   "name": zod.string().min(1),
-  "category": zod.string().min(1),
+  "category": zod.enum(['Paper', 'Cards', 'Finishing', 'Vinyl', 'Ink', 'Office', 'Tools', 'Packaging', 'Safety']),
   "quantity": zod.number().int().min(createInventoryItemBodyQuantityMin),
   "unit": zod.string().min(1),
   "threshold": zod.number().int().min(createInventoryItemBodyThresholdMin),
@@ -199,7 +241,7 @@ export const createInventoryItemResponseThresholdMin = 0;
 export const CreateInventoryItemResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
-  "category": zod.string(),
+  "category": zod.enum(['Paper', 'Cards', 'Finishing', 'Vinyl', 'Ink', 'Office', 'Tools', 'Packaging', 'Safety']),
   "quantity": zod.number().int().min(createInventoryItemResponseQuantityMin),
   "unit": zod.string(),
   "threshold": zod.number().int().min(createInventoryItemResponseThresholdMin),
@@ -209,12 +251,61 @@ export const CreateInventoryItemResponse = zod.object({
 
 
 /**
+ * @summary Bulk import inventory items
+ */
+
+
+export const importInventoryItemsBodyItemsItemQuantityMin = 0;
+
+
+export const importInventoryItemsBodyItemsItemThresholdMin = 0;
+
+
+
+
+
+export const ImportInventoryItemsBody = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string().min(1),
+  "name": zod.string().min(1),
+  "category": zod.enum(['Paper', 'Cards', 'Finishing', 'Vinyl', 'Ink', 'Office', 'Tools', 'Packaging', 'Safety']),
+  "quantity": zod.number().int().min(importInventoryItemsBodyItemsItemQuantityMin),
+  "unit": zod.string().min(1),
+  "threshold": zod.number().int().min(importInventoryItemsBodyItemsItemThresholdMin),
+  "location": zod.string().min(1),
+  "note": zod.string().nullish()
+})).min(1)
+})
+
+export const importInventoryItemsResponseInsertedCountMin = 0;
+
+export const importInventoryItemsResponseItemsItemQuantityMin = 0;
+
+export const importInventoryItemsResponseItemsItemThresholdMin = 0;
+
+
+
+export const ImportInventoryItemsResponse = zod.object({
+  "insertedCount": zod.number().int().min(importInventoryItemsResponseInsertedCountMin),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "category": zod.enum(['Paper', 'Cards', 'Finishing', 'Vinyl', 'Ink', 'Office', 'Tools', 'Packaging', 'Safety']),
+  "quantity": zod.number().int().min(importInventoryItemsResponseItemsItemQuantityMin),
+  "unit": zod.string(),
+  "threshold": zod.number().int().min(importInventoryItemsResponseItemsItemThresholdMin),
+  "location": zod.string(),
+  "note": zod.string().nullish()
+}))
+})
+
+
+/**
  * @summary Update an inventory item
  */
 export const UpdateInventoryItemParams = zod.object({
   "id": zod.coerce.string()
 })
-
 
 
 
@@ -229,7 +320,7 @@ export const updateInventoryItemBodyThresholdMin = 0;
 export const UpdateInventoryItemBody = zod.object({
   "id": zod.string().min(1),
   "name": zod.string().min(1),
-  "category": zod.string().min(1),
+  "category": zod.enum(['Paper', 'Cards', 'Finishing', 'Vinyl', 'Ink', 'Office', 'Tools', 'Packaging', 'Safety']),
   "quantity": zod.number().int().min(updateInventoryItemBodyQuantityMin),
   "unit": zod.string().min(1),
   "threshold": zod.number().int().min(updateInventoryItemBodyThresholdMin),
@@ -246,7 +337,7 @@ export const updateInventoryItemResponseThresholdMin = 0;
 export const UpdateInventoryItemResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
-  "category": zod.string(),
+  "category": zod.enum(['Paper', 'Cards', 'Finishing', 'Vinyl', 'Ink', 'Office', 'Tools', 'Packaging', 'Safety']),
   "quantity": zod.number().int().min(updateInventoryItemResponseQuantityMin),
   "unit": zod.string(),
   "threshold": zod.number().int().min(updateInventoryItemResponseThresholdMin),
@@ -339,5 +430,97 @@ export const DeleteAuditRecordParams = zod.object({
 })
 
 export const DeleteAuditRecordResponse = zod.void()
+
+
+/**
+ * @summary Record a borrowed inventory item
+ */
+
+
+
+
+
+
+export const CreateBorrowedItemBody = zod.object({
+  "dateBorrowed": zod.coerce.date(),
+  "borrowerName": zod.string().min(1),
+  "itemId": zod.string().min(1),
+  "quantity": zod.number().int().min(1),
+  "conditionBorrowed": zod.string().min(1),
+  "dateReturned": zod.coerce.date().nullish(),
+  "conditionReturned": zod.string().nullish(),
+  "status": zod.enum(['Borrowed', 'Broke', 'Returned'])
+})
+
+
+
+
+export const CreateBorrowedItemResponse = zod.object({
+  "id": zod.string(),
+  "dateBorrowed": zod.coerce.date(),
+  "borrowerName": zod.string(),
+  "itemId": zod.string(),
+  "itemName": zod.string(),
+  "quantity": zod.number().int().min(1),
+  "unit": zod.string(),
+  "conditionBorrowed": zod.string(),
+  "dateReturned": zod.coerce.date().nullable(),
+  "conditionReturned": zod.string().nullable(),
+  "status": zod.enum(['Borrowed', 'Broke', 'Returned']),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a borrowed item record
+ */
+export const UpdateBorrowedItemParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+
+
+
+
+
+export const UpdateBorrowedItemBody = zod.object({
+  "dateBorrowed": zod.coerce.date(),
+  "borrowerName": zod.string().min(1),
+  "itemId": zod.string().min(1),
+  "quantity": zod.number().int().min(1),
+  "conditionBorrowed": zod.string().min(1),
+  "dateReturned": zod.coerce.date().nullish(),
+  "conditionReturned": zod.string().nullish(),
+  "status": zod.enum(['Borrowed', 'Broke', 'Returned'])
+})
+
+
+
+
+export const UpdateBorrowedItemResponse = zod.object({
+  "id": zod.string(),
+  "dateBorrowed": zod.coerce.date(),
+  "borrowerName": zod.string(),
+  "itemId": zod.string(),
+  "itemName": zod.string(),
+  "quantity": zod.number().int().min(1),
+  "unit": zod.string(),
+  "conditionBorrowed": zod.string(),
+  "dateReturned": zod.coerce.date().nullable(),
+  "conditionReturned": zod.string().nullable(),
+  "status": zod.enum(['Borrowed', 'Broke', 'Returned']),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a borrowed item record
+ */
+export const DeleteBorrowedItemParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteBorrowedItemResponse = zod.void()
 
 

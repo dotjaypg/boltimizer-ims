@@ -9,10 +9,25 @@ export interface HealthStatus {
   status: string;
 }
 
+export type InventoryItemCategory = typeof InventoryItemCategory[keyof typeof InventoryItemCategory];
+
+
+export const InventoryItemCategory = {
+  Paper: 'Paper',
+  Cards: 'Cards',
+  Finishing: 'Finishing',
+  Vinyl: 'Vinyl',
+  Ink: 'Ink',
+  Office: 'Office',
+  Tools: 'Tools',
+  Packaging: 'Packaging',
+  Safety: 'Safety',
+} as const;
+
 export interface InventoryItem {
   id: string;
   name: string;
-  category: string;
+  category: InventoryItemCategory;
   /** @minimum 0 */
   quantity: number;
   unit: string;
@@ -23,13 +38,27 @@ export interface InventoryItem {
   note?: string | null;
 }
 
+export type InventoryItemInputCategory = typeof InventoryItemInputCategory[keyof typeof InventoryItemInputCategory];
+
+
+export const InventoryItemInputCategory = {
+  Paper: 'Paper',
+  Cards: 'Cards',
+  Finishing: 'Finishing',
+  Vinyl: 'Vinyl',
+  Ink: 'Ink',
+  Office: 'Office',
+  Tools: 'Tools',
+  Packaging: 'Packaging',
+  Safety: 'Safety',
+} as const;
+
 export interface InventoryItemInput {
   /** @minLength 1 */
   id: string;
   /** @minLength 1 */
   name: string;
-  /** @minLength 1 */
-  category: string;
+  category: InventoryItemInputCategory;
   /** @minimum 0 */
   quantity: number;
   /** @minLength 1 */
@@ -98,16 +127,82 @@ export interface InventoryAdjustmentInput {
   quantity: number;
 }
 
+export type BorrowedItemInputStatus = typeof BorrowedItemInputStatus[keyof typeof BorrowedItemInputStatus];
+
+
+export const BorrowedItemInputStatus = {
+  Borrowed: 'Borrowed',
+  Broke: 'Broke',
+  Returned: 'Returned',
+} as const;
+
+export interface BorrowedItemInput {
+  dateBorrowed: string;
+  /** @minLength 1 */
+  borrowerName: string;
+  /** @minLength 1 */
+  itemId: string;
+  /** @minimum 1 */
+  quantity: number;
+  /** @minLength 1 */
+  conditionBorrowed: string;
+  /** @nullable */
+  dateReturned?: string | null;
+  /** @nullable */
+  conditionReturned?: string | null;
+  status: BorrowedItemInputStatus;
+}
+
 export interface InventoryBootstrapInput {
   items: InventoryItemInput[];
   activities: StockActivity[];
   auditRecords: AuditRecordInput[];
+  borrowedItems: BorrowedItemInput[];
+}
+
+export interface InventoryImportInput {
+  /** @minItems 1 */
+  items: InventoryItemInput[];
+}
+
+export interface InventoryImportResponse {
+  /** @minimum 0 */
+  insertedCount: number;
+  items: InventoryItem[];
+}
+
+export type BorrowedItemStatus = typeof BorrowedItemStatus[keyof typeof BorrowedItemStatus];
+
+
+export const BorrowedItemStatus = {
+  Borrowed: 'Borrowed',
+  Broke: 'Broke',
+  Returned: 'Returned',
+} as const;
+
+export interface BorrowedItem {
+  id: string;
+  dateBorrowed: string;
+  borrowerName: string;
+  itemId: string;
+  itemName: string;
+  /** @minimum 1 */
+  quantity: number;
+  unit: string;
+  conditionBorrowed: string;
+  /** @nullable */
+  dateReturned: string | null;
+  /** @nullable */
+  conditionReturned: string | null;
+  status: BorrowedItemStatus;
+  createdAt: string;
 }
 
 export interface InventoryState {
   items: InventoryItem[];
   activities: StockActivity[];
   auditRecords: AuditRecord[];
+  borrowedItems: BorrowedItem[];
 }
 
 export interface ErrorResponse {

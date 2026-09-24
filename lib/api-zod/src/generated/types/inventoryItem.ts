@@ -5,11 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { InventoryItemCategory } from './inventoryItemCategory';
 
 export interface InventoryItem {
   id: string;
   name: string;
-  category: string;
+  category: InventoryItemCategory;
   /** @minimum 0 */
   quantity: number;
   unit: string;

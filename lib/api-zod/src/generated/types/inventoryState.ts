@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AuditRecord } from './auditRecord';
+import type { BorrowedItem } from './borrowedItem';
 import type { InventoryItem } from './inventoryItem';
 import type { StockActivity } from './stockActivity';
 
@@ -13,4 +14,5 @@ export interface InventoryState {
   items: InventoryItem[];
   activities: StockActivity[];
   auditRecords: AuditRecord[];
+  borrowedItems: BorrowedItem[];
 }

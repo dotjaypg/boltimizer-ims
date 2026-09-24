@@ -74,6 +74,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InventoryItem"
+  /inventory/import:
+    post:
+      operationId: importInventoryItems
+      tags: [inventory]
+      summary: Bulk import inventory items
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryImportInput"
+      responses:
+        "201":
+          description: Imported inventory items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryImportResponse"
+        "409":
+          description: One or more item IDs already exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /inventory/items/{id}:
     patch:
       operationId: updateInventoryItem
@@ -169,9 +193,80 @@ paths:
           description: Audit record deleted
         "404":
           $ref: "#/components/responses/NotFound"
+  /inventory/borrowed-items:
+    post:
+      operationId: createBorrowedItem
+      tags: [inventory]
+      summary: Record a borrowed inventory item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BorrowedItemInput"
+      responses:
+        "201":
+          description: Created borrowed item record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BorrowedItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Not enough inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /inventory/borrowed-items/{id}:
+    patch:
+      operationId: updateBorrowedItem
+      tags: [inventory]
+      summary: Update a borrowed item record
+      parameters:
+        - $ref: "#/components/parameters/BorrowedItemId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BorrowedItemInput"
+      responses:
+        "200":
+          description: Updated borrowed item record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BorrowedItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Not enough inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteBorrowedItem
+      tags: [inventory]
+      summary: Delete a borrowed item record
+      parameters:
+        - $ref: "#/components/parameters/BorrowedItemId"
+      responses:
+        "204":
+          description: Borrowed item record deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
     InventoryItemId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    BorrowedItemId:
       name: id
       in: path
       required: true
@@ -191,7 +286,7 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
-        category: { type: string }
+        category: { type: string, enum: [Paper, Cards, Finishing, Vinyl, Ink, Office, Tools, Packaging, Safety] }
         quantity: { type: integer, minimum: 0 }
         unit: { type: string }
         threshold: { type: integer, minimum: 0 }
@@ -203,7 +298,7 @@ components:
       properties:
         id: { type: string, minLength: 1 }
         name: { type: string, minLength: 1 }
-        category: { type: string, minLength: 1 }
+        category: { type: string, enum: [Paper, Cards, Finishing, Vinyl, Ink, Office, Tools, Packaging, Safety] }
         quantity: { type: integer, minimum: 0 }
         unit: { type: string, minLength: 1 }
         threshold: { type: integer, minimum: 0 }
@@ -253,7 +348,7 @@ components:
         quantity: { type: integer, minimum: 0 }
     InventoryBootstrapInput:
       type: object
-      required: [items, activities, auditRecords]
+      required: [items, activities, auditRecords, borrowedItems]
       properties:
         items:
           type: array
@@ -264,9 +359,56 @@ components:
         auditRecords:
           type: array
           items: { $ref: "#/components/schemas/AuditRecordInput" }
+        borrowedItems:
+          type: array
+          items: { $ref: "#/components/schemas/BorrowedItemInput" }
+    InventoryImportInput:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/InventoryItemInput" }
+    InventoryImportResponse:
+      type: object
+      required: [insertedCount, items]
+      properties:
+        insertedCount: { type: integer, minimum: 0 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryItem" }
+    BorrowedItem:
+      type: object
+      required: [id, dateBorrowed, borrowerName, itemId, itemName, quantity, unit, conditionBorrowed, dateReturned, conditionReturned, status, createdAt]
+      properties:
+        id: { type: string }
+        dateBorrowed: { type: string, format: date }
+        borrowerName: { type: string }
+        itemId: { type: string }
+        itemName: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        unit: { type: string }
+        conditionBorrowed: { type: string }
+        dateReturned: { type: ["string", "null"], format: date }
+        conditionReturned: { type: ["string", "null"] }
+        status: { type: string, enum: [Borrowed, Broke, Returned] }
+        createdAt: { type: string, format: date-time }
+    BorrowedItemInput:
+      type: object
+      required: [dateBorrowed, borrowerName, itemId, quantity, conditionBorrowed, status]
+      properties:
+        dateBorrowed: { type: string, format: date }
+        borrowerName: { type: string, minLength: 1 }
+        itemId: { type: string, minLength: 1 }
+        quantity: { type: integer, minimum: 1 }
+        conditionBorrowed: { type: string, minLength: 1 }
+        dateReturned: { type: ["string", "null"], format: date }
+        conditionReturned: { type: ["string", "null"] }
+        status: { type: string, enum: [Borrowed, Broke, Returned] }
     InventoryState:
       type: object
-      required: [items, activities, auditRecords]
+      required: [items, activities, auditRecords, borrowedItems]
       properties:
         items:
           type: array
@@ -277,6 +419,9 @@ components:
         auditRecords:
           type: array
           items: { $ref: "#/components/schemas/AuditRecord" }
+        borrowedItems:
+          type: array
+          items: { $ref: "#/components/schemas/BorrowedItem" }
     ErrorResponse:
       type: object
       required: [error]

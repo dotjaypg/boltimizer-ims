@@ -5,10 +5,10 @@ import {
   Archive,
   ArrowUpRight,
   Briefcase,
-  Boxes,
   Check,
   ClipboardCheck,
   ClipboardList,
+  Download,
   Layers3,
   MapPin,
   Menu,
@@ -36,13 +36,17 @@ import {
   adjustInventoryQuantity,
   bootstrapInventory,
   createAuditRecord,
+  createBorrowedItem,
   createInventoryItem,
+  deleteBorrowedItem,
   deleteAuditRecord as deleteAuditRecordRequest,
   deleteInventoryItem,
   getInventoryState,
+  importInventoryItems,
   updateInventoryItem,
+  updateBorrowedItem,
 } from '@workspace/api-client-react';
-import type { InventoryState as ApiInventoryState } from '@workspace/api-client-react';
+import type { BorrowedItem, BorrowedItemInput, InventoryState as ApiInventoryState } from '@workspace/api-client-react';
 import logoAsset from '@assets/image_1789625612704.png';
 
 const queryClient = new QueryClient();
@@ -51,7 +55,7 @@ const ACTIVITY_STORAGE_KEY = 'creative-inventory-activity-v1';
 const AUDIT_STORAGE_KEY = 'creative-inventory-audit-v1';
 
 type Category = 'Paper' | 'Cards' | 'Finishing' | 'Vinyl' | 'Ink' | 'Office' | 'Tools' | 'Packaging' | 'Safety';
-type View = 'overview' | 'inventory' | 'audit';
+type View = 'overview' | 'inventory' | 'borrowed' | 'audit';
 
 type InventoryItem = {
   id: string;
@@ -161,7 +165,13 @@ function loadAuditRecords(): AuditRecord[] {
   }
 }
 
-function applyApiState(state: ApiInventoryState) {
+function safeDate(value: string | null | undefined, fallback = '') {
+  if (!value) return fallback;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : value;
+}
+
+function applyApiState(state: Pick<ApiInventoryState, 'items' | 'activities' | 'auditRecords'> & { borrowedItems?: ApiInventoryState['borrowedItems'] }) {
   return {
     items: state.items.map((item) => ({
       ...item,
@@ -175,8 +185,14 @@ function applyApiState(state: ApiInventoryState) {
     })),
     auditRecords: state.auditRecords.map((record) => ({
       ...record,
-      date: record.date.slice(0, 10),
+      date: safeDate(record.date, new Date().toISOString()).slice(0, 10),
       createdAt: new Date(record.createdAt).getTime(),
+    })),
+    borrowedItems: (state.borrowedItems ?? []).map((record) => ({
+      ...record,
+      dateBorrowed: safeDate(record.dateBorrowed, new Date().toISOString()).slice(0, 10),
+      dateReturned: record.dateReturned ? safeDate(record.dateReturned, '')?.slice(0, 10) || null : null,
+      conditionReturned: record.conditionReturned ?? null,
     })),
   };
 }
@@ -185,6 +201,7 @@ function Dashboard() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [activities, setActivities] = useState<StockActivity[]>([]);
   const [auditRecords, setAuditRecords] = useState<AuditRecord[]>([]);
+  const [borrowedItems, setBorrowedItems] = useState<BorrowedItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -192,6 +209,9 @@ function Dashboard() {
   const [view, setView] = useState<View>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dialog, setDialog] = useState<{ mode: 'add' | 'edit'; item?: InventoryItem } | null>(null);
+  const [borrowedDialog, setBorrowedDialog] = useState<{ mode: 'add' | 'edit'; item?: BorrowedItem } | null>(null);
+  const [borrowedDeleteTarget, setBorrowedDeleteTarget] = useState<BorrowedItem | null>(null);
+  const [importState, setImportState] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InventoryItem | null>(null);
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'neutral' } | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
@@ -220,6 +240,7 @@ function Dashboard() {
               department,
               purpose,
             })),
+            borrowedItems: [],
           });
         }
         if (!active) return;
@@ -227,6 +248,7 @@ function Dashboard() {
         setItems(next.items);
         setActivities(next.activities);
         setAuditRecords(next.auditRecords);
+        setBorrowedItems(next.borrowedItems);
         setLoadError(null);
       } catch {
         if (active) setLoadError('The inventory database could not be reached. Refresh to try again.');
@@ -244,8 +266,10 @@ function Dashboard() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const lowStock = useMemo(() => items.filter((item) => item.quantity <= item.threshold), [items]);
-  const totalUnits = useMemo(() => items.reduce((sum, item) => sum + item.quantity, 0), [items]);
+  const lowStock = useMemo(() => items.filter((item) => item.quantity > 0 && item.quantity <= item.threshold), [items]);
+  const outOfStock = useMemo(() => items.filter((item) => item.quantity === 0), [items]);
+  const borrowedCount = useMemo(() => borrowedItems.filter((item) => item.status !== 'Returned').length, [borrowedItems]);
+  const repairCount = useMemo(() => borrowedItems.filter((item) => item.status === 'Broke').length, [borrowedItems]);
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
     return items.filter((item) => {
@@ -262,6 +286,7 @@ function Dashboard() {
     setItems(state.items);
     setActivities(state.activities);
     setAuditRecords(state.auditRecords);
+    setBorrowedItems(state.borrowedItems);
   };
 
   const setExactQuantity = async (id: string, requestedQuantity: number) => {
@@ -310,13 +335,12 @@ function Dashboard() {
       note: String(form.get('note') || '').trim(),
     };
     try {
-      const saved = dialog?.mode === 'edit'
-        ? await updateInventoryItem(next.id, next)
-        : await createInventoryItem(next);
-      const localSaved = applyApiState({ items: [saved], activities: [], auditRecords: [] }).items[0];
-      setItems((current) => dialog?.mode === 'edit'
-        ? current.map((item) => item.id === next.id ? localSaved : item)
-        : [localSaved, ...current]);
+      if (dialog?.mode === 'edit') {
+        await updateInventoryItem(next.id, next);
+      } else {
+        await createInventoryItem(next);
+      }
+      await refreshDatabaseState();
       showToast(dialog?.mode === 'edit' ? 'Inventory record updated.' : 'New material added.');
       setDialog(null);
     } catch {
@@ -361,11 +385,90 @@ function Dashboard() {
     if (!deleteTarget) return;
     try {
       await deleteInventoryItem(deleteTarget.id);
-      setItems((current) => current.filter((item) => item.id !== deleteTarget.id));
+      await refreshDatabaseState();
       showToast(`${deleteTarget.name} removed from inventory.`, 'neutral');
       setDeleteTarget(null);
     } catch {
       showToast('The inventory record could not be removed.', 'neutral');
+    }
+  };
+
+  const saveBorrowedRecord = async (input: BorrowedItemInput, id?: string) => {
+    try {
+      if (id) {
+        await updateBorrowedItem(id, input);
+      } else {
+        await createBorrowedItem(input);
+      }
+      await refreshDatabaseState();
+      setBorrowedDialog(null);
+      showToast(id ? 'Borrowed record updated.' : 'Borrowed item checked out.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      showToast(message || 'The borrowed record could not be saved.', 'neutral');
+    }
+  };
+
+  const removeBorrowedRecord = async () => {
+    if (!borrowedDeleteTarget) return;
+    try {
+      await deleteBorrowedItem(borrowedDeleteTarget.id);
+      await refreshDatabaseState();
+      showToast('Borrowed record removed and inventory reconciled.', 'neutral');
+      setBorrowedDeleteTarget(null);
+    } catch {
+      showToast('The borrowed record could not be removed.', 'neutral');
+    }
+  };
+
+  const importItems = async (file: File) => {
+    setImportState(null);
+    try {
+      if (file.type && file.type !== 'application/json' && !file.name.toLowerCase().endsWith('.json')) {
+        throw new Error('Choose a JSON file.');
+      }
+      const parsed: unknown = JSON.parse(await file.text());
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { items?: unknown }).items)) {
+        throw new Error('The file must contain an items array.');
+      }
+      const rawItems = (parsed as { items: unknown[] }).items;
+      const requiredFields = ['id', 'name', 'category', 'quantity', 'unit', 'threshold', 'location'];
+      const validCategories = categories.slice(1);
+      const errors: string[] = [];
+      const itemsToImport = rawItems.map((raw, index) => {
+        if (!raw || typeof raw !== 'object') {
+          errors.push(`Item ${index + 1} is not an object.`);
+          return null;
+        }
+        const candidate = raw as Record<string, unknown>;
+        const missing = requiredFields.filter((field) => candidate[field] === undefined || candidate[field] === '');
+        if (missing.length) errors.push(`Item ${index + 1} is missing ${missing.join(', ')}.`);
+        if (!validCategories.includes(candidate.category as Category)) errors.push(`Item ${index + 1} has an invalid category.`);
+        if (
+          typeof candidate.quantity !== 'number' || !Number.isInteger(candidate.quantity) || candidate.quantity < 0
+          || typeof candidate.threshold !== 'number' || !Number.isInteger(candidate.threshold) || candidate.threshold < 0
+        ) {
+          errors.push(`Item ${index + 1} must use non-negative whole numbers for quantity and threshold.`);
+        }
+        return {
+          id: String(candidate.id ?? ''),
+          name: String(candidate.name ?? ''),
+          category: candidate.category as Category,
+          quantity: Number(candidate.quantity),
+          unit: String(candidate.unit ?? ''),
+          threshold: Number(candidate.threshold),
+          location: String(candidate.location ?? ''),
+          note: candidate.note == null ? null : String(candidate.note),
+        };
+      }).filter((item): item is NonNullable<typeof item> => Boolean(item));
+      if (errors.length) throw new Error(errors.slice(0, 3).join(' '));
+      if (!itemsToImport.length) throw new Error('Add at least one item to import.');
+      const result = await importInventoryItems({ items: itemsToImport });
+      await refreshDatabaseState();
+      setImportState({ tone: 'success', message: `${result.insertedCount} material${result.insertedCount === 1 ? '' : 's'} imported and synced.` });
+      showToast('Bulk import complete.');
+    } catch (error) {
+      setImportState({ tone: 'error', message: error instanceof Error ? error.message : 'The JSON file could not be imported.' });
     }
   };
 
@@ -417,6 +520,9 @@ function Dashboard() {
               <button type="button" onClick={() => { setView('inventory'); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-semibold transition ${view === 'inventory' ? 'bg-[#fff0f2] text-[#e40012]' : 'text-[#747983] hover:bg-[#fff4f5] hover:text-[#111522]'}`} data-testid="button-nav-inventory">
                 <Archive size={17} /> Inventory <span className="ml-auto rounded-md bg-[#e40012] px-1.5 py-0.5 font-mono text-[10px] text-white">{items.length}</span>
               </button>
+              <button type="button" onClick={() => { setView('borrowed'); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-semibold transition ${view === 'borrowed' ? 'bg-[#fff0f2] text-[#e40012]' : 'text-[#747983] hover:bg-[#fff4f5] hover:text-[#111522]'}`} data-testid="button-nav-borrowed">
+                <PackageOpen size={17} /> Borrowed <span className="ml-auto rounded-md bg-[#f6cdd2] px-1.5 py-0.5 font-mono text-[10px] text-[#8d2632]">{borrowedCount}</span>
+              </button>
               <button type="button" onClick={() => { setView('audit'); setSidebarOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-semibold transition ${view === 'audit' ? 'bg-[#fff0f2] text-[#e40012]' : 'text-[#747983] hover:bg-[#fff4f5] hover:text-[#111522]'}`} data-testid="button-nav-audit">
                 <ClipboardCheck size={17} /> Audit log <span className="ml-auto rounded-md bg-[#f6cdd2] px-1.5 py-0.5 font-mono text-[10px] text-[#8d2632]">{auditRecords.length}</span>
               </button>
@@ -428,12 +534,12 @@ function Dashboard() {
                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e40012] text-white"><Sparkles size={16} /></span>
                <span className="font-mono text-[10px] uppercase tracking-wider text-[#aa7c82]">Signal</span>
             </div>
-             <p className="mt-4 text-sm font-semibold text-[#111522]">{lowStock.length ? `${lowStock.length} ${lowStock.length === 1 ? 'item needs' : 'items need'} a look.` : 'Cabinet is in good shape.'}</p>
-             <p className="mt-1 text-xs leading-relaxed text-[#777c86]">{lowStock.length ? 'Review before the next print run.' : 'No urgent stock decisions today.'}</p>
+              <p className="mt-4 text-sm font-semibold text-[#111522]">{lowStock.length + outOfStock.length ? `${lowStock.length + outOfStock.length} ${(lowStock.length + outOfStock.length) === 1 ? 'item needs' : 'items need'} a look.` : 'Cabinet is in good shape.'}</p>
+              <p className="mt-1 text-xs leading-relaxed text-[#777c86]">{lowStock.length + outOfStock.length ? 'Review before the next print run.' : 'No urgent stock decisions today.'}</p>
           </div>
           <div className="mt-5 flex items-center gap-2 px-2 text-xs text-[#777c86]">
             <span className="h-2 w-2 rounded-full bg-[#10a77b]" />
-            Local workspace
+             Shared database
           </div>
         </aside>
 
@@ -443,8 +549,8 @@ function Dashboard() {
           <header className="flex h-[76px] items-center justify-between border-b border-[#f0dfe2] bg-white/95 px-5 backdrop-blur-md sm:px-8 lg:px-12">
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => setSidebarOpen(true)} className="relative z-10 rounded-lg p-2 text-[#4e535f] hover:bg-[#fff0f2] lg:hidden" aria-label="Open menu" aria-expanded={sidebarOpen} data-testid="button-open-menu"><Menu size={20} /></button>
-              <div className="hidden items-center gap-2 text-xs font-semibold text-[#777c86] sm:flex"><span>Boltimizer operations</span><span className="text-[#e5b7bd]">/</span><span className="text-[#111522]">{view === 'overview' ? 'Overview' : view === 'inventory' ? 'Inventory' : 'Audit log'}</span></div>
-              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#aa7c82] sm:hidden">{view}</span>
+               <div className="hidden items-center gap-2 text-xs font-semibold text-[#777c86] sm:flex"><span>Boltimizer operations</span><span className="text-[#e5b7bd]">/</span><span className="text-[#111522]">{view === 'overview' ? 'Overview' : view === 'inventory' ? 'Inventory' : view === 'borrowed' ? 'Borrowed / pull-out' : 'Audit log'}</span></div>
+               <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#aa7c82] sm:hidden">{view === 'borrowed' ? 'pull-out' : view}</span>
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
               <button type="button" onClick={() => { setView('inventory'); window.setTimeout(() => searchRef.current?.focus(), 20); }} className="hidden items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-[#747983] hover:bg-[#fff0f2] md:flex" data-testid="button-focus-search"><Search size={15} /> Find material <kbd className="rounded border border-[#f0d5d9] bg-[#fff7f8] px-1.5 py-0.5 font-mono text-[9px]">/</kbd></button>
@@ -462,10 +568,10 @@ function Dashboard() {
             </section>
 
             <section className="appear-2 mt-9 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Inventory summary">
-              <StatCard label="Materials tracked" value={items.length} detail="distinct records" icon={<PackageOpen size={18} />} tone="navy" testId="stat-materials" />
-              <StatCard label="Units on hand" value={totalUnits.toLocaleString()} detail="across the cabinet" icon={<Boxes size={18} />} tone="teal" testId="stat-units" />
-              <StatCard label="Needs attention" value={lowStock.length} detail={lowStock.length ? 'at or below threshold' : 'nothing urgent'} icon={<AlertTriangle size={18} />} tone={lowStock.length ? 'coral' : 'sage'} testId="stat-low-stock" />
-               <StatCard label="Cabinet" value={1} detail="active location" icon={<MapPin size={18} />} tone="gold" testId="stat-bays" />
+               <StatCard label="Low stock" value={lowStock.length} detail={lowStock.length ? 'below threshold' : 'clear'} icon={<AlertTriangle size={18} />} tone={lowStock.length ? 'coral' : 'sage'} testId="stat-low-stock" />
+               <StatCard label="Out of stock" value={outOfStock.length} detail={outOfStock.length ? 'needs replenishment' : 'none'} icon={<MinusCircle size={18} />} tone={outOfStock.length ? 'coral' : 'teal'} testId="stat-out-of-stock" />
+               <StatCard label="Borrowed items" value={borrowedCount} detail="currently out" icon={<PackageOpen size={18} />} tone="navy" testId="stat-borrowed" />
+               <StatCard label="Needs repair" value={repairCount} detail={repairCount ? 'returned damaged' : 'no repair flags'} icon={<Wrench size={18} />} tone={repairCount ? 'gold' : 'sage'} testId="stat-needs-repair" />
             </section>
 
             <section className="appear-3 mt-8 grid gap-5 xl:grid-cols-[1.55fr_.85fr]">
@@ -474,9 +580,10 @@ function Dashboard() {
                    <div><p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">Operations pulse</p><h2 className="mt-1 text-lg font-extrabold tracking-[-0.04em]">What needs a decision?</h2></div>
                 </div>
                 <div className="mt-5 space-y-2">
-                  {lowStock.slice(0, 3).map((item) => <LowStockRow key={item.id} item={item} onAdjust={adjustQuantity} onEdit={() => setDialog({ mode: 'edit', item })} />)}
-                  {!lowStock.length && <div className="flex items-center gap-3 rounded-xl bg-[#e2f0e5] px-4 py-4 text-sm text-[#2e604d]"><Check size={18} /><span>Everything is above its minimum threshold. Nice and quiet.</span></div>}
-                  {lowStock.length > 3 && <p className="px-1 pt-2 font-mono text-[10px] uppercase tracking-wider text-[#87909e]">+ {lowStock.length - 3} more in inventory</p>}
+                   {lowStock.slice(0, 3).map((item) => <LowStockRow key={item.id} item={item} onAdjust={adjustQuantity} onEdit={() => setDialog({ mode: 'edit', item })} />)}
+                   {outOfStock.slice(0, 2).map((item) => <LowStockRow key={item.id} item={item} onAdjust={adjustQuantity} onEdit={() => setDialog({ mode: 'edit', item })} />)}
+                   {!lowStock.length && !outOfStock.length && <div className="flex items-center gap-3 rounded-xl bg-[#e2f0e5] px-4 py-4 text-sm text-[#2e604d]"><Check size={18} /><span>Everything is above its minimum threshold. Nice and quiet.</span></div>}
+                   {lowStock.length + outOfStock.length > 5 && <p className="px-1 pt-2 font-mono text-[10px] uppercase tracking-wider text-[#87909e]">+ {lowStock.length + outOfStock.length - 5} more in inventory</p>}
                 </div>
               </div>
               <ActivityLog activities={activities} />
@@ -491,7 +598,8 @@ function Dashboard() {
                  </button>
               </div>
 
-               <div className="mt-5 flex flex-col gap-3 rounded-xl border border-[#f0dfe2] bg-white p-3 sm:p-4 soft-shadow">
+                 <BulkImportPanel importState={importState} onImport={importItems} />
+                 <div className="mt-5 flex flex-col gap-3 rounded-xl border border-[#f0dfe2] bg-white p-3 sm:p-4 soft-shadow">
                 <div className="flex flex-col gap-3 md:flex-row">
                   <label className="relative flex-1">
                     <span className="sr-only">Search materials</span>
@@ -508,7 +616,7 @@ function Dashboard() {
                  <div className="mt-4 overflow-hidden rounded-xl border border-[#f0dfe2] bg-white soft-shadow">
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[850px] border-collapse text-left">
-                       <thead><tr className="border-b border-[#f0dfe2] bg-[#fff7f8] text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><th className="px-5 py-4 font-mono font-medium">Item name</th><th className="px-3 py-4 font-mono font-medium">Category</th><th className="px-3 py-4 font-mono font-medium">Quantity in stock</th><th className="px-3 py-4 font-mono font-medium">Unit</th><th className="px-3 py-4 font-mono font-medium">Min. threshold</th><th className="px-3 py-4 font-mono font-medium">Cabinet location</th><th className="px-5 py-4 text-right font-mono font-medium">Actions</th></tr></thead>
+                        <thead><tr className="border-b border-[#f0dfe2] bg-[#fff7f8] text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><th className="px-5 py-4 font-mono font-medium">Item name</th><th className="px-3 py-4 font-mono font-medium">Category</th><th className="px-3 py-4 font-mono font-medium">Quantity in stock</th><th className="px-3 py-4 font-mono font-medium">Unit</th><th className="px-3 py-4 font-mono font-medium">Min. threshold</th><th className="px-3 py-4 font-mono font-medium">Operational status</th><th className="px-3 py-4 font-mono font-medium">Cabinet location</th><th className="px-5 py-4 text-right font-mono font-medium">Actions</th></tr></thead>
                        <tbody>{filteredItems.map((item) => <InventoryRow key={item.id} item={item} flash={flashId === item.id} onAdjust={adjustQuantity} onSetQuantity={setExactQuantity} onEdit={() => setDialog({ mode: 'edit', item })} onDelete={() => setDeleteTarget(item)} />)}</tbody>
                     </table>
                   </div>
@@ -519,7 +627,8 @@ function Dashboard() {
               )}
              </section>}
 
-              {view === 'audit' && <AuditView items={items} records={auditRecords} onSave={saveAuditRecord} onDelete={deleteAuditRecord} />}
+               {view === 'borrowed' && <BorrowedView records={borrowedItems} onAdd={() => setBorrowedDialog({ mode: 'add' })} onEdit={(item) => setBorrowedDialog({ mode: 'edit', item })} onDelete={(item) => setBorrowedDeleteTarget(item)} />}
+               {view === 'audit' && <AuditView items={items} records={auditRecords} onSave={saveAuditRecord} onDelete={deleteAuditRecord} />}
           </div>
         </main>
       </div>
@@ -527,6 +636,8 @@ function Dashboard() {
        {toast && <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg bg-[#111522] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_36px_rgba(17,21,34,.22)]" role="status" data-testid="status-toast"><span className={`flex h-5 w-5 items-center justify-center rounded-full ${toast.tone === 'success' ? 'bg-[#e40012] text-white' : 'bg-[#f6cdd2] text-[#111522]'}`}><Check size={13} strokeWidth={3} /></span>{toast.message}</div>}
       {dialog && <ItemDialog dialog={dialog} onClose={() => setDialog(null)} onSave={saveItem} />}
       {deleteTarget && <DeleteDialog item={deleteTarget} onClose={() => setDeleteTarget(null)} onDelete={deleteItem} />}
+       {borrowedDialog && <BorrowedDialog dialog={borrowedDialog} items={items} onClose={() => setBorrowedDialog(null)} onSave={saveBorrowedRecord} />}
+       {borrowedDeleteTarget && <BorrowedDeleteDialog item={borrowedDeleteTarget} onClose={() => setBorrowedDeleteTarget(null)} onDelete={removeBorrowedRecord} />}
     </div>
   );
 }
@@ -667,10 +778,124 @@ function AuditView({ items, records, onSave, onDelete }: { items: InventoryItem[
   </section>;
 }
 
+function BulkImportPanel({ importState, onImport }: { importState: { tone: 'success' | 'error'; message: string } | null; onImport: (file: File) => void }) {
+  const [isDragging, setIsDragging] = useState(false);
+  const downloadTemplate = () => {
+    const template = {
+      items: [{
+        id: 'sample-paper-a4-matte',
+        name: 'Matte coated A4',
+        category: 'Paper',
+        quantity: 62,
+        unit: 'sheets',
+        threshold: 75,
+        location: 'Bay A · Shelf 2 · Bin B',
+        note: '170 gsm, presentation finish',
+      }],
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'boltimizer-inventory-template.json';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  return <div className="mt-5 rounded-xl border border-[#e8d8cb] bg-[#fbf5ed] p-4 sm:p-5">
+    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+      <div>
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">Batch intake</p>
+        <h2 className="mt-1 text-base font-extrabold tracking-[-0.03em]">Import a JSON register</h2>
+        <p className="mt-1 max-w-xl text-xs leading-5 text-[#777c86]">Validate a complete item list in the browser, then send it to the shared cabinet database.</p>
+      </div>
+      <button type="button" onClick={downloadTemplate} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-[#e2c8bc] bg-white px-3 py-2 text-xs font-bold text-[#6d5960] hover:bg-[#fff9f7]" data-testid="button-download-json-template"><Download size={14} /> Download template</button>
+    </div>
+    <label onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }} onDragLeave={() => setIsDragging(false)} onDrop={(event) => { event.preventDefault(); setIsDragging(false); const file = event.dataTransfer.files[0]; if (file) onImport(file); }} className={`mt-4 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 py-5 text-center transition ${isDragging ? 'border-[#e40012] bg-[#fff0f2]' : 'border-[#d9bdb3] bg-white/70 hover:border-[#e40012]'}`} data-testid="dropzone-json-import">
+      <input type="file" accept="application/json" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImport(file); event.currentTarget.value = ''; }} data-testid="input-json-import" />
+      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fff0f2] text-[#e40012]"><Archive size={16} /></span>
+      <span className="mt-2 text-sm font-bold text-[#333846]">Drop a JSON file here or browse</span>
+      <span className="mt-1 font-mono text-[9px] uppercase tracking-wider text-[#9b8583]">Required fields: id, name, category, quantity, unit, threshold, location</span>
+    </label>
+    {importState && <p className={`mt-3 rounded-lg px-3 py-2.5 text-xs font-semibold ${importState.tone === 'success' ? 'bg-[#e7f5ef] text-[#14704f]' : 'bg-[#ffe4e7] text-[#b0000f]'}`} role="status" data-testid={`status-json-import-${importState.tone}`}>{importState.message}</p>}
+  </div>;
+}
+
+function BorrowedView({ records, onAdd, onEdit, onDelete }: { records: BorrowedItem[]; onAdd: () => void; onEdit: (item: BorrowedItem) => void; onDelete: (item: BorrowedItem) => void }) {
+  return <section className="appear-4" aria-labelledby="borrowed-heading">
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div>
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">Borrowed / pull-out register</p>
+        <h1 id="borrowed-heading" className="mt-1 text-[clamp(2rem,4vw,3.4rem)] font-extrabold tracking-[-0.07em]">Track what leaves the desk.</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-[#5f6570]">Record equipment and material handoffs with condition notes. Inventory availability is adjusted transactionally by the server.</p>
+      </div>
+      <button type="button" onClick={onAdd} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[#e40012] px-4 py-3 text-sm font-bold text-white shadow-[4px_4px_0_#111522] hover:bg-[#c80010]" data-testid="button-add-borrowed"><Plus size={17} /> Log pull-out</button>
+    </div>
+    <div className="mt-8 overflow-hidden rounded-xl border border-[#f0dfe2] bg-white soft-shadow">
+      <div className="flex items-center justify-between border-b border-[#f0dfe2] bg-[#fff7f8] px-5 py-4">
+        <div><p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">Handoff history</p><h2 className="mt-1 text-lg font-extrabold tracking-[-0.04em]">Active and closed pull-outs</h2></div>
+        <span className="rounded-full bg-[#fff0f2] px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#a9000d]" data-testid="text-borrowed-count">{records.length} records</span>
+      </div>
+      {records.length ? <div className="overflow-x-auto"><table className="w-full min-w-[1060px] border-collapse text-left">
+        <thead><tr className="border-b border-[#f0dfe2] text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><th className="px-5 py-4 font-mono font-medium">Borrower / item</th><th className="px-3 py-4 font-mono font-medium">Date borrowed</th><th className="px-3 py-4 font-mono font-medium">Qty</th><th className="px-3 py-4 font-mono font-medium">Condition out</th><th className="px-3 py-4 font-mono font-medium">Date returned</th><th className="px-3 py-4 font-mono font-medium">Condition in</th><th className="px-3 py-4 font-mono font-medium">Status</th><th className="px-5 py-4 text-right font-mono font-medium">Actions</th></tr></thead>
+        <tbody>{records.map((record) => <BorrowedRow key={record.id} record={record} onEdit={() => onEdit(record)} onDelete={() => onDelete(record)} />)}</tbody>
+      </table></div> : <div className="px-6 py-16 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-[#fff0f2] text-[#e40012]"><PackageOpen size={22} /></span><h3 className="mt-4 text-base font-extrabold">No pull-outs recorded.</h3><p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#777c86]">When a tool or material leaves the cabinet, log it here so the next handoff starts with a clean count.</p></div>}
+    </div>
+  </section>;
+}
+
+function BorrowedRow({ record, onEdit, onDelete }: { record: BorrowedItem; onEdit: () => void; onDelete: () => void }) {
+  const statusClass = record.status === 'Borrowed' ? 'bg-[#fff1d6] text-[#8d5f24]' : record.status === 'Broke' ? 'bg-[#ffe4e7] text-[#b0000f]' : 'bg-[#e7f5ef] text-[#14704f]';
+  return <tr className="border-b border-[#e8e0d5] last:border-0 hover:bg-[#fffaf5]" data-testid={`row-borrowed-${record.id}`}>
+    <td className="px-5 py-4"><p className="text-sm font-bold text-[#25344c]">{record.borrowerName}</p><p className="mt-1 text-xs text-[#7b8490]">{record.itemName} · {record.quantity} {record.unit}</p></td>
+    <td className="px-3 py-4 font-mono text-xs text-[#6e7888]">{formatAuditDate(record.dateBorrowed)}</td>
+    <td className="px-3 py-4 font-mono text-xs text-[#6e7888]">{record.quantity} {record.unit}</td>
+    <td className="max-w-[160px] px-3 py-4 text-xs text-[#596475]">{record.conditionBorrowed}</td>
+    <td className="px-3 py-4 font-mono text-xs text-[#6e7888]">{record.dateReturned ? formatAuditDate(record.dateReturned) : '—'}</td>
+    <td className="max-w-[160px] px-3 py-4 text-xs text-[#596475]">{record.conditionReturned || '—'}</td>
+    <td className="px-3 py-4"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${statusClass}`} data-testid={`status-borrowed-${record.id}`}>{record.status}</span></td>
+    <td className="px-5 py-4"><div className="flex justify-end gap-1"><button type="button" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#788294] hover:bg-[#e9dfd2] hover:text-[#1c2b45]" aria-label={`Edit borrowed record for ${record.itemName}`} data-testid={`button-edit-borrowed-${record.id}`}><Pencil size={14} /></button><button type="button" onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#a58a82] hover:bg-[#f6dfd8] hover:text-[#a95242]" aria-label={`Delete borrowed record for ${record.itemName}`} data-testid={`button-delete-borrowed-${record.id}`}><Trash2 size={14} /></button></div></td>
+  </tr>;
+}
+
+function BorrowedDialog({ dialog, items, onClose, onSave }: { dialog: { mode: 'add' | 'edit'; item?: BorrowedItem }; items: InventoryItem[]; onClose: () => void; onSave: (input: BorrowedItemInput, id?: string) => Promise<void> }) {
+  const record = dialog.item;
+  const defaultItemId = record?.itemId || items[0]?.id || '';
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const input: BorrowedItemInput = {
+      dateBorrowed: String(form.get('dateBorrowed') || ''),
+      borrowerName: String(form.get('borrowerName') || '').trim(),
+      itemId: String(form.get('itemId') || ''),
+      quantity: Math.max(1, Math.round(Number(form.get('quantity')) || 0)),
+      conditionBorrowed: String(form.get('conditionBorrowed') || '').trim(),
+      dateReturned: String(form.get('dateReturned') || '') || null,
+      conditionReturned: String(form.get('conditionReturned') || '').trim() || null,
+      status: String(form.get('status') || 'Borrowed') as BorrowedItemInput['status'],
+    };
+    void onSave(input, record?.id || undefined);
+  };
+  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#111522]/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby="borrowed-dialog-title" data-testid="dialog-borrowed"><div className="max-h-[92dvh] w-full max-w-[620px] overflow-y-auto rounded-t-2xl border border-[#f0dfe2] bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-7">
+    <div className="flex items-start justify-between"><div><p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">{dialog.mode === 'edit' ? 'Edit handoff' : 'New handoff'}</p><h2 id="borrowed-dialog-title" className="mt-1 text-2xl font-extrabold tracking-[-0.06em]">{dialog.mode === 'edit' ? 'Update pull-out' : 'Log a pull-out'}</h2><p className="mt-1 text-sm text-[#778191]">Condition and return details stay with the record.</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-[#8a9099] hover:bg-[#fff0f2]" aria-label="Close borrowed dialog" data-testid="button-close-borrowed-dialog"><X size={18} /></button></div>
+    <form onSubmit={submit} className="mt-7 space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2"><Field label="Date borrowed" name="dateBorrowed" type="date" defaultValue={record?.dateBorrowed || new Date().toISOString().slice(0, 10)} required testId="input-borrowed-date" /><Field label="Borrower name" name="borrowerName" defaultValue={record?.borrowerName} placeholder="e.g. Jordan Lee" required testId="input-borrower-name" /></div>
+      <div className="grid gap-4 sm:grid-cols-[1fr_140px]"><label className="block"><span className="mb-1.5 block text-xs font-bold text-[#4f535e]">Item</span><select name="itemId" defaultValue={defaultItemId} required className="h-11 w-full rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 text-sm text-[#111522] focus:border-[#e40012] focus:outline-none" data-testid="select-borrowed-item">{items.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.unit}</option>)}</select></label><Field label="Quantity" name="quantity" type="number" min="1" defaultValue={record?.quantity ?? 1} required testId="input-borrowed-quantity" /></div>
+      <label className="block"><span className="mb-1.5 block text-xs font-bold text-[#4f535e]">Condition borrowed</span><input name="conditionBorrowed" defaultValue={record?.conditionBorrowed || 'Good'} placeholder="e.g. Good, sealed, minor wear" required className="h-11 w-full rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 text-sm text-[#111522] placeholder:text-[#a3a7aa] focus:border-[#e40012] focus:bg-white focus:outline-none" data-testid="input-condition-borrowed" /></label>
+      <div className="grid gap-4 sm:grid-cols-2"><Field label="Date returned" name="dateReturned" type="date" defaultValue={record?.dateReturned || ''} testId="input-borrowed-return-date" /><Field label="Condition returned" name="conditionReturned" defaultValue={record?.conditionReturned || ''} placeholder="e.g. Good or damaged" testId="input-condition-returned" /></div>
+      <label className="block"><span className="mb-1.5 block text-xs font-bold text-[#4f535e]">Status</span><select name="status" defaultValue={record?.status || 'Borrowed'} className="h-11 w-full rounded-lg border border-[#f0dfe2] bg-[#fff8f9] px-3 text-sm text-[#111522] focus:border-[#e40012] focus:outline-none" data-testid="select-borrowed-status"><option value="Borrowed">Borrowed</option><option value="Broke">Broke</option><option value="Returned">Returned</option></select></label>
+      <div className="flex flex-col-reverse gap-2 border-t border-[#f0dfe2] pt-5 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="rounded-xl px-4 py-3 text-sm font-bold text-[#667184] hover:bg-[#fff0f2]" data-testid="button-cancel-borrowed">Cancel</button><button type="submit" className="rounded-lg bg-[#e40012] px-5 py-3 text-sm font-bold text-white shadow-[3px_3px_0_#111522] hover:bg-[#c80010]" data-testid="button-save-borrowed">{dialog.mode === 'edit' ? 'Save changes' : 'Log pull-out'}</button></div>
+    </form>
+  </div></div>;
+}
+
+function BorrowedDeleteDialog({ item, onClose, onDelete }: { item: BorrowedItem; onClose: () => void; onDelete: () => void }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111522]/45 p-5 backdrop-blur-[2px]" role="alertdialog" aria-modal="true" aria-labelledby="delete-borrowed-title" data-testid="dialog-delete-borrowed"><div className="w-full max-w-[420px] rounded-xl border border-[#f0dfe2] bg-white p-6 shadow-2xl"><span className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#fff0f2] text-[#e40012]"><Trash2 size={19} /></span><h2 id="delete-borrowed-title" className="mt-5 text-xl font-extrabold tracking-[-0.05em]">Remove this pull-out?</h2><p className="mt-2 text-sm leading-6 text-[#778191]"><strong className="text-[#111522]">{item.itemName}</strong> for {item.borrowerName} will be removed and the server will reconcile availability.</p><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg px-4 py-2.5 text-sm font-bold text-[#667184] hover:bg-[#fff0f2]" data-testid="button-cancel-delete-borrowed">Keep it</button><button type="button" onClick={onDelete} className="rounded-lg bg-[#e40012] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#c80010]" data-testid="button-confirm-delete-borrowed">Remove record</button></div></div></div>;
+}
+
 function LowStockRow({ item, onAdjust, onEdit }: { item: InventoryItem; onAdjust: (id: string, amount: number) => void; onEdit: () => void }) {
   const meta = categoryMeta[item.category];
   const Icon = meta.icon;
-  return <div className="flex items-center gap-3 rounded-xl border border-[#e5dbcf] bg-[#faf4e9] px-3 py-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${meta.tint} ${meta.tone}`}><Icon size={16} /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{item.name}</p><p className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-[#9298a0]">{item.quantity} {item.unit} · minimum {item.threshold}</p></div><span className="hidden rounded-full bg-[#f5d9d1] px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-[#984c40] sm:inline">Low</span><div className="flex items-center gap-1"><button type="button" onClick={() => onAdjust(item.id, -1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-[#dcd1c3] text-[#586578] hover:bg-[#f0e5d7]" aria-label={`Decrease ${item.name}`} data-testid={`button-decrease-alert-${item.id}`}><Minus size={13} /></button><button type="button" onClick={() => onAdjust(item.id, 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-[#dcd1c3] text-[#586578] hover:bg-[#f0e5d7]" aria-label={`Increase ${item.name}`} data-testid={`button-increase-alert-${item.id}`}><Plus size={13} /></button><button type="button" onClick={onEdit} className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-[#8d7567] hover:bg-[#f0e5d7]" aria-label={`Edit ${item.name}`} data-testid={`button-edit-alert-${item.id}`}><Pencil size={13} /></button></div></div>;
+  const status = item.quantity === 0 ? 'Out of stock' : 'Low stock';
+  return <div className="flex items-center gap-3 rounded-xl border border-[#e5dbcf] bg-[#faf4e9] px-3 py-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${meta.tint} ${meta.tone}`}><Icon size={16} /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{item.name}</p><p className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-[#9298a0]">{item.quantity} {item.unit} · minimum {item.threshold}</p><p className="mt-1 flex items-center gap-1 text-xs text-[#786a61]"><MapPin size={11} />{item.location}</p></div><span className="hidden rounded-full bg-[#f5d9d1] px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-[#984c40] sm:inline">{status}</span><div className="flex items-center gap-1"><button type="button" onClick={() => onAdjust(item.id, -1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-[#dcd1c3] text-[#586578] hover:bg-[#f0e5d7]" aria-label={`Decrease ${item.name}`} data-testid={`button-decrease-alert-${item.id}`}><Minus size={13} /></button><button type="button" onClick={() => onAdjust(item.id, 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-[#dcd1c3] text-[#586578] hover:bg-[#f0e5d7]" aria-label={`Increase ${item.name}`} data-testid={`button-increase-alert-${item.id}`}><Plus size={13} /></button><button type="button" onClick={onEdit} className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-[#8d7567] hover:bg-[#f0e5d7]" aria-label={`Edit ${item.name}`} data-testid={`button-edit-alert-${item.id}`}><Pencil size={13} /></button></div></div>;
 }
 
 function InventoryRow({ item, flash, onAdjust, onSetQuantity, onEdit, onDelete }: { item: InventoryItem; flash: boolean; onAdjust: (id: string, amount: number) => void; onSetQuantity: (id: string, quantity: number) => void; onEdit: () => void; onDelete: () => void }) {
@@ -678,6 +903,7 @@ function InventoryRow({ item, flash, onAdjust, onSetQuantity, onEdit, onDelete }
   const meta = categoryMeta[item.category];
   const Icon = meta.icon;
   const isLow = item.quantity <= item.threshold;
+  const status = item.quantity === 0 ? 'Out of stock' : isLow ? 'Low stock' : 'On hand';
   useEffect(() => setDraftQuantity(String(item.quantity)), [item.quantity]);
   const commitQuantity = () => {
     const parsed = Number(draftQuantity);
@@ -690,7 +916,8 @@ function InventoryRow({ item, flash, onAdjust, onSetQuantity, onEdit, onDelete }
     <td className="px-3 py-4"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${meta.tint} ${meta.tone}`}>{item.category}</span></td>
     <td className="px-3 py-4"><div className="flex items-center gap-2"><div className={`flex items-center rounded-lg border ${isLow ? 'border-[#e8b7aa] bg-[#fff0eb]' : 'border-[#ddd3c4] bg-[#f9f3e9]'}`}><button type="button" onClick={() => onAdjust(item.id, -1)} className="flex h-8 w-8 items-center justify-center text-[#788294] hover:bg-[#f0e3d6]" aria-label={`Decrease ${item.name}`} data-testid={`button-decrease-${item.id}`}><Minus size={13} /></button><input type="number" min="0" step="1" value={draftQuantity} onChange={(event) => setDraftQuantity(event.target.value)} onBlur={commitQuantity} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commitQuantity(); event.currentTarget.blur(); } }} className={`h-8 w-[48px] border-0 bg-transparent p-0 text-center font-mono text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#e40012]/30 ${isLow ? 'text-[#a95242]' : 'text-[#25344c]'}`} aria-label={`Quantity for ${item.name}`} data-testid={`text-quantity-${item.id}`} /><button type="button" onClick={() => onAdjust(item.id, 1)} className="flex h-8 w-8 items-center justify-center text-[#788294] hover:bg-[#f0e3d6]" aria-label={`Increase ${item.name}`} data-testid={`button-increase-${item.id}`}><Plus size={13} /></button></div>{isLow && <span className="font-mono text-[9px] uppercase tracking-wider text-[#a95242]">Check</span>}</div></td>
     <td className="px-3 py-4 font-mono text-xs text-[#6e7888]">{item.unit}</td>
-    <td className="px-3 py-4 font-mono text-xs text-[#6e7888]">{item.threshold}</td>
+     <td className="px-3 py-4 font-mono text-xs text-[#6e7888]">{item.threshold}</td>
+     <td className="px-3 py-4"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${item.quantity === 0 ? 'bg-[#ffe4e7] text-[#b0000f]' : isLow ? 'bg-[#fff0eb] text-[#a95242]' : 'bg-[#e7f5ef] text-[#14704f]'}`} data-testid={`status-inventory-${item.id}`}>{status}</span></td>
     <td className="px-3 py-4"><span className="flex items-center gap-1.5 text-xs text-[#667184]"><MapPin size={13} className="text-[#a1a7ad]" />{item.location}</span></td>
     <td className="px-5 py-4"><div className="flex justify-end gap-1"><button type="button" onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#788294] hover:bg-[#e9dfd2] hover:text-[#1c2b45]" aria-label={`Edit ${item.name}`} data-testid={`button-edit-${item.id}`}><Pencil size={14} /></button><button type="button" onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#a58a82] hover:bg-[#f6dfd8] hover:text-[#a95242]" aria-label={`Delete ${item.name}`} data-testid={`button-delete-${item.id}`}><Trash2 size={14} /></button></div></td>
   </tr>;
@@ -710,7 +937,7 @@ function Field({ label, name, defaultValue, placeholder, required, type = 'text'
 }
 
 function DeleteDialog({ item, onClose, onDelete }: { item: InventoryItem; onClose: () => void; onDelete: () => void }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111522]/45 p-5 backdrop-blur-[2px]" role="alertdialog" aria-modal="true" aria-labelledby="delete-dialog-title" data-testid="dialog-delete"><div className="w-full max-w-[420px] rounded-xl border border-[#f0dfe2] bg-white p-6 shadow-2xl"><span className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#fff0f2] text-[#e40012]"><Trash2 size={19} /></span><h2 id="delete-dialog-title" className="mt-5 text-xl font-extrabold tracking-[-0.05em]">Remove this material?</h2><p className="mt-2 text-sm leading-6 text-[#778191]"><strong className="text-[#111522]">{item.name}</strong> will be removed from this browser’s cabinet list. This can’t be undone.</p><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg px-4 py-2.5 text-sm font-bold text-[#667184] hover:bg-[#fff0f2]" data-testid="button-cancel-delete">Keep it</button><button type="button" onClick={onDelete} className="rounded-lg bg-[#e40012] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#c80010]" data-testid="button-confirm-delete">Remove material</button></div></div></div>;
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111522]/45 p-5 backdrop-blur-[2px]" role="alertdialog" aria-modal="true" aria-labelledby="delete-dialog-title" data-testid="dialog-delete"><div className="w-full max-w-[420px] rounded-xl border border-[#f0dfe2] bg-white p-6 shadow-2xl"><span className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#fff0f2] text-[#e40012]"><Trash2 size={19} /></span><h2 id="delete-dialog-title" className="mt-5 text-xl font-extrabold tracking-[-0.05em]">Remove this material?</h2><p className="mt-2 text-sm leading-6 text-[#778191]"><strong className="text-[#111522]">{item.name}</strong> will be removed from the shared cabinet database. This can’t be undone.</p><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg px-4 py-2.5 text-sm font-bold text-[#667184] hover:bg-[#fff0f2]" data-testid="button-cancel-delete">Keep it</button><button type="button" onClick={onDelete} className="rounded-lg bg-[#e40012] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#c80010]" data-testid="button-confirm-delete">Remove material</button></div></div></div>;
 }
 
 function Router() {

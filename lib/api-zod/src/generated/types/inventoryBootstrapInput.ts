@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AuditRecordInput } from './auditRecordInput';
+import type { BorrowedItemInput } from './borrowedItemInput';
 import type { InventoryItemInput } from './inventoryItemInput';
 import type { StockActivity } from './stockActivity';
 
@@ -13,4 +14,5 @@ export interface InventoryBootstrapInput {
   items: InventoryItemInput[];
   activities: StockActivity[];
   auditRecords: AuditRecordInput[];
+  borrowedItems: BorrowedItemInput[];
 }

@@ -5,14 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { InventoryItemInputCategory } from './inventoryItemInputCategory';
 
 export interface InventoryItemInput {
   /** @minLength 1 */
   id: string;
   /** @minLength 1 */
   name: string;
-  /** @minLength 1 */
-  category: string;
+  category: InventoryItemInputCategory;
   /** @minimum 0 */
   quantity: number;
   /** @minLength 1 */

@@ -22,10 +22,14 @@ import type {
 import type {
   AuditRecord,
   AuditRecordInput,
+  BorrowedItem,
+  BorrowedItemInput,
   ErrorResponse,
   HealthStatus,
   InventoryAdjustmentInput,
   InventoryBootstrapInput,
+  InventoryImportInput,
+  InventoryImportResponse,
   InventoryItem,
   InventoryItemInput,
   InventoryState,
@@ -389,6 +393,94 @@ export const useCreateInventoryItem = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateInventoryItemMutationOptions(options));
+    }
+
+export const getImportInventoryItemsUrl = () => {
+
+
+
+
+  return `/api/inventory/import`
+}
+
+/**
+ * @summary Bulk import inventory items
+ */
+export const importInventoryItems = async (inventoryImportInput: InventoryImportInput, options?: Parameters<typeof customFetch>[1]): Promise<InventoryImportResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<InventoryImportResponse>(getImportInventoryItemsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(inventoryImportInput)
+  }
+);}
+
+
+
+
+
+export const getImportInventoryItemsMutationKey = () => ['importInventoryItems'] as const;
+
+export const getImportInventoryItemsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importInventoryItems>>, TError,ImportInventoryItemsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importInventoryItems>>, TError,ImportInventoryItemsMutationVariables, TContext> => {
+
+const mutationKey = getImportInventoryItemsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importInventoryItems>>, ImportInventoryItemsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  importInventoryItems(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportInventoryItemsMutationResult = NonNullable<Awaited<ReturnType<typeof importInventoryItems>>>
+    export type ImportInventoryItemsMutationBody = BodyType<InventoryImportInput>
+    export type ImportInventoryItemsMutationError = ErrorType<ErrorResponse>
+    export type ImportInventoryItemsMutationVariables = {data: BodyType<InventoryImportInput>}
+
+    /**
+ * @summary Bulk import inventory items
+ */
+export const useImportInventoryItems = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importInventoryItems>>, TError,ImportInventoryItemsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importInventoryItems>>,
+        TError,
+        ImportInventoryItemsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getImportInventoryItemsMutationOptions(options));
     }
 
 export const getUpdateInventoryItemUrl = (id: string,) => {
@@ -802,5 +894,256 @@ export const useDeleteAuditRecord = <TError = ErrorType<NotFoundResponse>,
         TContext
       > => {
       return useMutation(getDeleteAuditRecordMutationOptions(options));
+    }
+
+export const getCreateBorrowedItemUrl = () => {
+
+
+
+
+  return `/api/inventory/borrowed-items`
+}
+
+/**
+ * @summary Record a borrowed inventory item
+ */
+export const createBorrowedItem = async (borrowedItemInput: BorrowedItemInput, options?: Parameters<typeof customFetch>[1]): Promise<BorrowedItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<BorrowedItem>(getCreateBorrowedItemUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(borrowedItemInput)
+  }
+);}
+
+
+
+
+
+export const getCreateBorrowedItemMutationKey = () => ['createBorrowedItem'] as const;
+
+export const getCreateBorrowedItemMutationOptions = <TError = ErrorType<NotFoundResponse | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBorrowedItem>>, TError,CreateBorrowedItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBorrowedItem>>, TError,CreateBorrowedItemMutationVariables, TContext> => {
+
+const mutationKey = getCreateBorrowedItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBorrowedItem>>, CreateBorrowedItemMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createBorrowedItem(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBorrowedItemMutationResult = NonNullable<Awaited<ReturnType<typeof createBorrowedItem>>>
+    export type CreateBorrowedItemMutationBody = BodyType<BorrowedItemInput>
+    export type CreateBorrowedItemMutationError = ErrorType<NotFoundResponse | ErrorResponse>
+    export type CreateBorrowedItemMutationVariables = {data: BodyType<BorrowedItemInput>}
+
+    /**
+ * @summary Record a borrowed inventory item
+ */
+export const useCreateBorrowedItem = <TError = ErrorType<NotFoundResponse | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBorrowedItem>>, TError,CreateBorrowedItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBorrowedItem>>,
+        TError,
+        CreateBorrowedItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateBorrowedItemMutationOptions(options));
+    }
+
+export const getUpdateBorrowedItemUrl = (id: string,) => {
+
+
+
+
+  return `/api/inventory/borrowed-items/${id}`
+}
+
+/**
+ * @summary Update a borrowed item record
+ */
+export const updateBorrowedItem = async (id: string,
+    borrowedItemInput: BorrowedItemInput, options?: Parameters<typeof customFetch>[1]): Promise<BorrowedItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<BorrowedItem>(getUpdateBorrowedItemUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(borrowedItemInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateBorrowedItemMutationKey = () => ['updateBorrowedItem'] as const;
+
+export const getUpdateBorrowedItemMutationOptions = <TError = ErrorType<NotFoundResponse | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBorrowedItem>>, TError,UpdateBorrowedItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateBorrowedItem>>, TError,UpdateBorrowedItemMutationVariables, TContext> => {
+
+const mutationKey = getUpdateBorrowedItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateBorrowedItem>>, UpdateBorrowedItemMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateBorrowedItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateBorrowedItemMutationResult = NonNullable<Awaited<ReturnType<typeof updateBorrowedItem>>>
+    export type UpdateBorrowedItemMutationBody = BodyType<BorrowedItemInput>
+    export type UpdateBorrowedItemMutationError = ErrorType<NotFoundResponse | ErrorResponse>
+    export type UpdateBorrowedItemMutationVariables = {id: string;data: BodyType<BorrowedItemInput>}
+
+    /**
+ * @summary Update a borrowed item record
+ */
+export const useUpdateBorrowedItem = <TError = ErrorType<NotFoundResponse | ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBorrowedItem>>, TError,UpdateBorrowedItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateBorrowedItem>>,
+        TError,
+        UpdateBorrowedItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateBorrowedItemMutationOptions(options));
+    }
+
+export const getDeleteBorrowedItemUrl = (id: string,) => {
+
+
+
+
+  return `/api/inventory/borrowed-items/${id}`
+}
+
+/**
+ * @summary Delete a borrowed item record
+ */
+export const deleteBorrowedItem = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteBorrowedItemUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteBorrowedItemMutationKey = () => ['deleteBorrowedItem'] as const;
+
+export const getDeleteBorrowedItemMutationOptions = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteBorrowedItem>>, TError,DeleteBorrowedItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteBorrowedItem>>, TError,DeleteBorrowedItemMutationVariables, TContext> => {
+
+const mutationKey = getDeleteBorrowedItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteBorrowedItem>>, DeleteBorrowedItemMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteBorrowedItem(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteBorrowedItemMutationResult = NonNullable<Awaited<ReturnType<typeof deleteBorrowedItem>>>
+
+    export type DeleteBorrowedItemMutationError = ErrorType<NotFoundResponse>
+    export type DeleteBorrowedItemMutationVariables = {id: string}
+
+    /**
+ * @summary Delete a borrowed item record
+ */
+export const useDeleteBorrowedItem = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteBorrowedItem>>, TError,DeleteBorrowedItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteBorrowedItem>>,
+        TError,
+        DeleteBorrowedItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteBorrowedItemMutationOptions(options));
     }
 
