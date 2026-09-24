@@ -305,8 +305,6 @@ function Dashboard() {
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'neutral' } | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const inventoryScrollTopRef = useRef<HTMLDivElement>(null);
-  const inventoryTableScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -778,17 +776,16 @@ function Dashboard() {
                  </div>
               </div>
 
-              {filteredItems.length > 0 ? (
-                  <div className="mt-4 overflow-hidden rounded-xl border border-[#f0dfe2] bg-white soft-shadow">
-                   <div ref={inventoryScrollTopRef} onScroll={(event) => { if (inventoryTableScrollRef.current) inventoryTableScrollRef.current.scrollLeft = event.currentTarget.scrollLeft; }} className="inventory-scrollbar-top overflow-x-auto border-b border-[#f0dfe2] bg-[#fff7f8]" aria-label="Scroll inventory table horizontally" data-testid="scrollbar-inventory-top"><div className="h-3 min-w-[1020px]" /></div>
-                   <div ref={inventoryTableScrollRef} onScroll={(event) => { if (inventoryScrollTopRef.current) inventoryScrollTopRef.current.scrollLeft = event.currentTarget.scrollLeft; }} className="overflow-x-auto">
+               {filteredItems.length > 0 ? (
+                 <>
+                   <div className="inventory-table-scroll mt-4 h-[540px] overflow-auto rounded-xl border border-[#f0dfe2] bg-white soft-shadow" aria-label="Inventory table scroll area" data-testid="inventory-table-scroll">
                      <table className="w-full min-w-[1020px] border-collapse text-left">
-                          <thead><tr className="border-b border-[#f0dfe2] bg-[#fff7f8] text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><th scope="col" className="px-5 py-4 font-mono font-medium">Preview</th><SortableHeader label="Item name" sortKey="name" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Category" sortKey="category" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Quantity in stock" sortKey="quantity" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Unit" sortKey="unit" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Price per Unit" sortKey="pricePerUnit" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Min. threshold" sortKey="threshold" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Operational status" sortKey="status" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Cabinet location" sortKey="location" sort={inventorySort} onSort={sortInventory} /><th scope="col" className="px-5 py-4 text-right font-mono font-medium">Actions</th></tr></thead>
+                           <thead className="sticky top-0 z-20"><tr className="border-b border-[#f0dfe2] bg-[#fff7f8] text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><th scope="col" className="px-5 py-4 font-mono font-medium">Preview</th><SortableHeader label="Item name" sortKey="name" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Category" sortKey="category" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Quantity in stock" sortKey="quantity" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Unit" sortKey="unit" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Price per Unit" sortKey="pricePerUnit" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Min. threshold" sortKey="threshold" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Operational status" sortKey="status" sort={inventorySort} onSort={sortInventory} /><SortableHeader label="Cabinet location" sortKey="location" sort={inventorySort} onSort={sortInventory} /><th scope="col" className="px-5 py-4 text-right font-mono font-medium">Actions</th></tr></thead>
                          <tbody>{filteredItems.map((item) => <InventoryRow key={item.id} item={item} borrowedItems={borrowedItems} flash={flashId === item.id} onAdjust={adjustQuantity} onSetQuantity={setExactQuantity} onEdit={() => setDialog({ mode: 'edit', item })} onDelete={() => setDeleteTarget(item)} />)}</tbody>
                     </table>
-                  </div>
-                   <div className="flex items-center justify-between border-t border-[#f0dfe2] bg-[#fff7f8] px-5 py-3 font-mono text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><span data-testid="text-filter-count">{filteredItems.length} of {items.length} materials shown</span><span>All changes sync instantly</span></div>
-                </div>
+                   </div>
+                    <div className="flex items-center justify-between border-t border-[#f0dfe2] bg-[#fff7f8] px-5 py-3 font-mono text-[10px] uppercase tracking-[0.12em] text-[#92747b]"><span data-testid="text-filter-count">{filteredItems.length} of {items.length} materials shown</span><span>All changes sync instantly</span></div>
+                 </>
               ) : (
                  <EmptyState search={search} category={category} statusFilter={statusFilter} onReset={resetFilters} onAdd={() => { setDialog({ mode: 'add' }); setView('inventory'); }} />
               )}
@@ -821,8 +818,8 @@ function AnalyticsPanel({ period, onPeriodChange, usedQuantity, borrowedQuantity
       <div><p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#d10011]">Usage intelligence</p><h2 className="mt-1 text-lg font-extrabold tracking-[-0.04em]">The cabinet, in motion.</h2><p className="mt-1 text-xs text-[#7d8490]">Live totals from records and pull-outs for {periodLabel}.</p></div>
       <div className="flex rounded-lg border border-[#f0dfe2] bg-[#fff8f9] p-1" role="group" aria-label="Analytics timeframe">
         {(['daily', 'weekly', 'monthly'] as AnalyticsPeriod[]).map((entry) => <button type="button" key={entry} onClick={() => onPeriodChange(entry)} className={`rounded-md px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider transition ${period === entry ? 'bg-[#111522] text-white' : 'text-[#8d747b] hover:bg-[#fff0f2]'}`} data-testid={`button-analytics-${entry}`}>{entry}</button>)}
-      </div>
-    </div>
+       </div>
+     </div>
     <div className="mt-5 grid gap-3 md:grid-cols-3">
       <div className="rounded-lg border border-[#e9e3d8] bg-[#fbf7ef] p-4" data-testid="analytics-items-used"><div className="flex items-center justify-between"><span className="font-mono text-[10px] uppercase tracking-wider text-[#8c756d]">Items used</span><BarChart3 size={16} className="text-[#e40012]" /></div><p className="mt-3 text-2xl font-extrabold tracking-[-0.06em] text-[#111522]">{usedQuantity}</p><p className="mt-1 text-xs text-[#7c828a]">consumed material units</p></div>
       <div className="rounded-lg border border-[#e0e5e2] bg-[#f2f7f4] p-4" data-testid="analytics-items-borrowed"><div className="flex items-center justify-between"><span className="font-mono text-[10px] uppercase tracking-wider text-[#567569]">Items borrowed</span><PackageOpen size={16} className="text-[#286e7d]" /></div><p className="mt-3 text-2xl font-extrabold tracking-[-0.06em] text-[#111522]">{borrowedQuantity}</p><p className="mt-1 text-xs text-[#7c828a]">active pull-out units</p></div>
